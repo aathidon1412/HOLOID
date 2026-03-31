@@ -1,0 +1,155 @@
+const jwt = require("jsonwebtoken");
+
+const User = require("../models/User");
+const ApiError = require("../utils/ApiError");
+const ApiResponse = require("../utils/ApiResponse");
+const catchAsync = require("../utils/catchAsync");
+const tokenService = require("../services/tokenService");
+const { sendActivationEmail } = require("../services/emailService");
+
+const register = catchAsync(async (req, res) => {
+	const { name, email, password, role, hospitalId } = req.body;
+	const normalizedEmail = email.toLowerCase();
+
+	const existingUser = await User.findOne({ email: normalizedEmail });
+	if (existingUser) {
+		throw new ApiError(409, "Email already registered", "EMAIL_EXISTS");
+	}
+
+	const user = await User.create({
+		name,
+		email: normalizedEmail,
+		password,
+		role,
+		hospital: hospitalId || null,
+	});
+
+	const activationToken = tokenService.generateActivationToken(user);
+	const clientUrl = process.env.CLIENT_URL || "http://localhost:5173";
+	const activationLink = `${clientUrl}/activate?token=${activationToken}`;
+
+	await sendActivationEmail({
+		to: user.email,
+		name: user.name,
+		activationLink,
+	});
+
+	return res.status(201).json(
+		new ApiResponse(
+			201,
+			{
+				user: {
+					id: user._id,
+					name: user.name,
+					email: user.email,
+					role: user.role,
+					isActive: user.isActive,
+				},
+				activationLink:
+					process.env.NODE_ENV !== "production" ? activationLink : undefined,
+			},
+			"Registration successful. Please activate your account via email link."
+		)
+	);
+});
+
+const activateAccount = catchAsync(async (req, res) => {
+	const token = req.query.token || req.body.token;
+	if (!token) {
+		throw new ApiError(400, "Activation token is required", "MISSING_TOKEN");
+	}
+
+	const payload = tokenService.verifyActivationToken(token);
+	const user = await User.findById(payload.sub);
+
+	if (!user) {
+		throw new ApiError(404, "User not found", "USER_NOT_FOUND");
+	}
+
+	if (user.isActive) {
+		return res
+			.status(200)
+			.json(new ApiResponse(200, null, "Account is already active."));
+	}
+
+	user.isActive = true;
+	await user.save();
+
+	return res
+		.status(200)
+		.json(new ApiResponse(200, null, "Account activated successfully."));
+});
+
+const login = catchAsync(async (req, res) => {
+	const { email, password } = req.body;
+	const normalizedEmail = email.toLowerCase();
+
+	const user = await User.findOne({ email: normalizedEmail }).select("+password");
+	if (!user) {
+		throw new ApiError(401, "Invalid email or password", "INVALID_CREDENTIALS");
+	}
+
+	const passwordMatch = await user.comparePassword(password);
+	if (!passwordMatch) {
+		throw new ApiError(401, "Invalid email or password", "INVALID_CREDENTIALS");
+	}
+
+	if (!user.isActive) {
+		throw new ApiError(
+			403,
+			"Account not activated. Please use the activation link.",
+			"ACCOUNT_INACTIVE"
+		);
+	}
+
+	user.lastLoginAt = new Date();
+	await user.save();
+
+	const accessToken = tokenService.generateAccessToken(user);
+
+	return res.status(200).json(
+		new ApiResponse(
+			200,
+			{
+				accessToken,
+				user: {
+					id: user._id,
+					name: user.name,
+					email: user.email,
+					role: user.role,
+					hospital: user.hospital,
+				},
+			},
+			"Login successful"
+		)
+	);
+});
+
+const logout = catchAsync(async (req, res) => {
+	const token = req.token || tokenService.extractBearerToken(req);
+
+	if (!token) {
+		throw new ApiError(400, "Authorization token is required", "MISSING_TOKEN");
+	}
+
+	const decoded = jwt.decode(token);
+	tokenService.revokeToken(token, decoded && decoded.exp ? decoded.exp : undefined);
+
+	return res
+		.status(200)
+		.json(new ApiResponse(200, null, "Logout successful"));
+});
+
+const verifyAuthToken = catchAsync(async (req, res) => {
+	return res
+		.status(200)
+		.json(new ApiResponse(200, { user: req.user }, "Token is valid"));
+});
+
+module.exports = {
+	register,
+	activateAccount,
+	login,
+	logout,
+	verifyAuthToken,
+};
