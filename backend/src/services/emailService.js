@@ -1,65 +1,45 @@
 const nodemailer = require("nodemailer");
 
-let cachedTransporter = null;
+const createTransporter = () => {
+	const { SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS } = process.env;
 
-const getTransporter = () => {
-  if (cachedTransporter) return cachedTransporter;
+	if (!SMTP_HOST || !SMTP_PORT || !SMTP_USER || !SMTP_PASS) {
+		return null;
+	}
 
-  const host = process.env.SMTP_HOST;
-  const port = Number(process.env.SMTP_PORT || 587);
-  const user = process.env.SMTP_USER;
-  const pass = process.env.SMTP_PASS;
-
-  if (!host || !user || !pass) {
-    return null;
-  }
-
-  cachedTransporter = nodemailer.createTransport({
-    host,
-    port,
-    secure: port === 465,
-    auth: { user, pass }
-  });
-
-  return cachedTransporter;
+	return nodemailer.createTransport({
+		host: SMTP_HOST,
+		port: Number(SMTP_PORT),
+		secure: Number(SMTP_PORT) === 465,
+		auth: {
+			user: SMTP_USER,
+			pass: SMTP_PASS,
+		},
+	});
 };
 
-const sendEmail = async ({ to, subject, text, html }) => {
-  const transporter = getTransporter();
-  if (!transporter) {
-    console.warn("Email service is not configured. Set SMTP_* variables to enable email notifications.");
-    return { skipped: true };
-  }
+const sendActivationEmail = async ({ to, name, activationLink }) => {
+	const transporter = createTransporter();
 
-  const from = process.env.EMAIL_FROM || process.env.SMTP_USER;
+	if (!transporter) {
+		console.log(`Activation link for ${to}: ${activationLink}`);
+		return;
+	}
 
-  await transporter.sendMail({
-    from,
-    to,
-    subject,
-    text,
-    html
-  });
-
-  return { skipped: false };
-};
-
-const sendAccountActivationEmail = async ({ to, accountName, activationLink }) => {
-  const subject = "Account Activation";
-  const text = `Hello ${accountName}, your account is ready. Activate it here: ${activationLink}`;
-
-  return sendEmail({ to, subject, text });
-};
-
-const sendCriticalAlertEmail = async ({ to, hospitalName, bedType, remainingBeds, region }) => {
-  const subject = "Critical Capacity Alert";
-  const text = `Critical alert for ${hospitalName} (${region}): ${bedType} is low with ${remainingBeds} beds remaining.`;
-
-  return sendEmail({ to, subject, text });
+	await transporter.sendMail({
+		from: process.env.EMAIL_FROM || process.env.SMTP_USER,
+		to,
+		subject: "Activate your HOLOID account",
+		text: `Hi ${name},\n\nUse this link to activate your account:\n${activationLink}\n\nThis link expires soon.`,
+		html: `
+			<p>Hi ${name},</p>
+			<p>Use the link below to activate your HOLOID account:</p>
+			<p><a href="${activationLink}">${activationLink}</a></p>
+			<p>This link expires soon.</p>
+		`,
+	});
 };
 
 module.exports = {
-  sendEmail,
-  sendAccountActivationEmail,
-  sendCriticalAlertEmail
+	sendActivationEmail,
 };
