@@ -1,5 +1,6 @@
 const dotenv = require("dotenv");
 const http = require("http");
+const { Server } = require("socket.io");
 
 const app = require("./app");
 const connectDB = require("./config/db");
@@ -7,12 +8,17 @@ const logisticsRoutes = require("./routes/logisticsRoutes");
 const commandCenterRoutes = require("./routes/commandCenterRoutes");
 const notificationRoutes = require("./routes/notificationRoutes");
 const initializeSocket = require("./socket");
+const createResourceRouter = require("../routes/resourceRoutes");
 
 dotenv.config();
 
+const app = express();
+const server = http.createServer(app);
+const io = new Server(server);
 const PORT = process.env.PORT || 5000;
 
 app.use(express.json());
+app.use("/api/resources", createResourceRouter(io));
 
 app.use("/api/logistics", logisticsRoutes);
 app.use("/api/command-center", commandCenterRoutes);
@@ -25,6 +31,16 @@ app.get("/", (req, res) => {
 app.use((err, req, res, next) => {
 	console.error(err);
 	res.status(500).json({ message: "Internal server error" });
+io.on("connection", (socket) => {
+	console.log(`Client connected: ${socket.id}`);
+
+	socket.on("join-region", (region) => {
+		if (typeof region !== "string" || !region.trim()) {
+			return;
+		}
+
+		socket.join(region);
+	});
 });
 
 const startServer = async () => {
