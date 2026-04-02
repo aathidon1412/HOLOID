@@ -31,6 +31,7 @@ app.get("/", (req, res) => {
 app.use((err, req, res, next) => {
 	console.error(err);
 	res.status(500).json({ message: "Internal server error" });
+});
 io.on("connection", (socket) => {
 	console.log(`Client connected: ${socket.id}`);
 
