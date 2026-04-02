@@ -7,7 +7,7 @@ const connectDB = require("./config/db");
 const logisticsRoutes = require("./routes/logisticsRoutes");
 const commandCenterRoutes = require("./routes/commandCenterRoutes");
 const notificationRoutes = require("./routes/notificationRoutes");
-const createResourceRouter = require("../routes/resourceRoutes");
+const createResourceRouter = require("./routes/resourceRoutes");
 
 dotenv.config();
 
