@@ -68,6 +68,18 @@ const updateBedStatus = (io) => async (req, res) => {
 
 		if (io && typeof updatedResource.region === "string" && updatedResource.region) {
 			io.to(updatedResource.region).emit("bed-update", updatedResource);
+
+			// Emit a fine-grained event for hospital and region subscribers
+			const payload = {
+				hospital: updatedResource.hospital,
+				region: updatedResource.region,
+				bedType,
+				status,
+				updatedAt: updatedResource.updatedAt || new Date(),
+			};
+
+			io.to(`hospital-${updatedResource.hospital}`).emit("bed-status-changed", payload);
+			io.to(updatedResource.region).emit("bed-status-changed", payload);
 		}
 
 		return res.status(200).json(updatedResource);

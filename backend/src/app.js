@@ -39,10 +39,4 @@ app.use("/api/v1/auth", authRoutes);
 app.use("/api/v1/users", userRoutes);
 app.use("/api/v1/hospitals", hospitalRoutes);
 
-app.use((req, res, next) => {
-	next(new ApiError(404, `Route not found: ${req.originalUrl}`, "ROUTE_NOT_FOUND"));
-});
-
-app.use(errorHandler);
-
 module.exports = app;
