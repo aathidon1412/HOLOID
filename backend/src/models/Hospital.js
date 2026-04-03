@@ -36,10 +36,28 @@ const hospitalSchema = new mongoose.Schema(
 			email: { type: String, trim: true, lowercase: true, required: true },
 			emergencyPhone: { type: String, trim: true },
 		},
+		region: {
+			type: String,
+			trim: true,
+			default: "",
+		},
+		active: {
+			type: Boolean,
+			default: true,
+		},
 		capacity: {
 			totalBeds: { type: Number, required: true, min: 0 },
 			icuBeds: { type: Number, default: 0, min: 0 },
 			availableBeds: { type: Number, required: true, min: 0 },
+		},
+		resources: {
+			generalBeds: { type: Number, default: 0, min: 0 },
+			icuBeds: { type: Number, default: 0, min: 0 },
+			ventilatorBeds: { type: Number, default: 0, min: 0 },
+			totalGeneralBeds: { type: Number, default: 0, min: 0 },
+			totalIcuBeds: { type: Number, default: 0, min: 0 },
+			totalVentilatorBeds: { type: Number, default: 0, min: 0 },
+			ambulancesAvailable: { type: Number, default: 0, min: 0 },
 		},
 		createdBy: {
 			type: mongoose.Schema.Types.ObjectId,

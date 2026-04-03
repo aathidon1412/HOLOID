@@ -3,7 +3,7 @@ const Transfer = require("../models/Transfer");
 const { normalizeBedType, ALLOWED_BED_TYPES } = require("../utils/bedType");
 const { haversineDistanceKm, getRouteMetadata } = require("../services/mapService");
 const { createAuditLog } = require("../services/auditService");
-const { sendCriticalAlertEmail } = require("../services/emailService");
+const { sendCriticalAlertEmail, sendTransferEventEmail } = require("../services/emailService");
 
 const getRequester = (body = {}) => ({
   role: body.role || "doctor",
@@ -16,6 +16,26 @@ const parseCoordinates = (lat, lng) => {
   const parsedLng = Number(lng);
   if (Number.isNaN(parsedLat) || Number.isNaN(parsedLng)) return null;
   return { lat: parsedLat, lng: parsedLng };
+};
+
+const getHospitalCoordinates = (hospital) => {
+  if (!hospital || !hospital.location) return null;
+
+  if (typeof hospital.location.lat === "number" && typeof hospital.location.lng === "number") {
+    return { lat: hospital.location.lat, lng: hospital.location.lng };
+  }
+
+  const coords = hospital.location.coordinates?.coordinates;
+  if (Array.isArray(coords) && coords.length === 2) {
+    const lng = Number(coords[0]);
+    const lat = Number(coords[1]);
+
+    if (!Number.isNaN(lat) && !Number.isNaN(lng)) {
+      return { lat, lng };
+    }
+  }
+
+  return null;
 };
 
 const searchHospitalsByResource = async (req, res) => {
@@ -43,9 +63,11 @@ const searchHospitalsByResource = async (req, res) => {
       availableBeds: hospital.resources?.[bedType] || 0
     };
 
-    if (sourceLocation) {
+    const targetCoordinates = getHospitalCoordinates(hospital);
+
+    if (sourceLocation && targetCoordinates) {
       payload.distanceKm = Number(
-        haversineDistanceKm(sourceLocation, hospital.location).toFixed(2)
+        haversineDistanceKm(sourceLocation, targetCoordinates).toFixed(2)
       );
     }
 
@@ -90,11 +112,21 @@ const getNearestHospitalWithRequiredBed = async (req, res) => {
   }
 
   const sorted = hospitals
-    .map((hospital) => ({
-      ...hospital,
-      distanceKm: Number(haversineDistanceKm(origin, hospital.location).toFixed(2))
-    }))
+    .map((hospital) => {
+      const targetCoordinates = getHospitalCoordinates(hospital);
+      if (!targetCoordinates) return null;
+
+      return {
+        ...hospital,
+        distanceKm: Number(haversineDistanceKm(origin, targetCoordinates).toFixed(2))
+      };
+    })
+    .filter(Boolean)
     .sort((a, b) => a.distanceKm - b.distanceKm);
+
+  if (!sorted.length) {
+    return res.status(404).json({ message: "No hospital with mappable coordinates found" });
+  }
 
   return res.status(200).json({ hospital: sorted[0] });
 };
@@ -138,28 +170,55 @@ const requestPatientTransfer = async (req, res) => {
       return res.status(400).json({ message: "toHospital does not have available beds" });
     }
   } else {
-    const candidates = await Hospital.find({
+    const candidateFilter = {
       _id: { $ne: fromHospital._id },
       active: true,
-      region: fromHospital.region,
       [`resources.${normalizedBedType}`]: { $gte: 1 }
-    }).lean();
+    };
+
+    if (fromHospital.region) {
+      candidateFilter.region = fromHospital.region;
+    }
+
+    const candidates = await Hospital.find(candidateFilter).lean();
 
     if (!candidates.length) {
       return res.status(404).json({ message: "No destination hospital found" });
     }
 
+    const fromHospitalCoordinates = getHospitalCoordinates(fromHospital);
+    if (!fromHospitalCoordinates) {
+      return res.status(400).json({ message: "fromHospital location coordinates are missing" });
+    }
+
     const nearest = candidates
-      .map((hospital) => ({
-        ...hospital,
-        distanceKm: haversineDistanceKm(fromHospital.location, hospital.location)
-      }))
+      .map((hospital) => {
+        const targetCoordinates = getHospitalCoordinates(hospital);
+        if (!targetCoordinates) return null;
+
+        return {
+          ...hospital,
+          distanceKm: haversineDistanceKm(fromHospitalCoordinates, targetCoordinates)
+        };
+      })
+      .filter(Boolean)
       .sort((a, b) => a.distanceKm - b.distanceKm)[0];
+
+    if (!nearest) {
+      return res.status(404).json({ message: "No destination hospital with valid coordinates found" });
+    }
 
     toHospital = await Hospital.findById(nearest._id);
   }
 
-  const route = await getRouteMetadata(fromHospital.location, toHospital.location);
+  const fromHospitalCoordinates = getHospitalCoordinates(fromHospital);
+  const toHospitalCoordinates = getHospitalCoordinates(toHospital);
+
+  if (!fromHospitalCoordinates || !toHospitalCoordinates) {
+    return res.status(400).json({ message: "Both hospitals must have valid coordinates" });
+  }
+
+  const route = await getRouteMetadata(fromHospitalCoordinates, toHospitalCoordinates);
 
   const transfer = await Transfer.create({
     patientName,
@@ -195,7 +254,18 @@ const requestPatientTransfer = async (req, res) => {
       hospitalName: toHospital.name,
       bedType: normalizedBedType,
       remainingBeds,
-      region: toHospital.region
+      region: toHospital.region || toHospital.location?.state || "UNKNOWN"
+    });
+
+    await sendTransferEventEmail({
+      to: notificationEmails.join(","),
+      transferId: String(transfer._id),
+      status: "requested",
+      patientName,
+      fromHospitalName: fromHospital.name,
+      toHospitalName: toHospital.name,
+      note: "Transfer request created",
+      route
     });
   }
 
@@ -275,6 +345,20 @@ const updateTransferStatus = async (req, res) => {
     actor: getRequester(actor),
     metadata: { status, note: note || "" }
   });
+
+  const notificationEmails = req.body.notificationEmails;
+  if (Array.isArray(notificationEmails) && notificationEmails.length) {
+    await sendTransferEventEmail({
+      to: notificationEmails.join(","),
+      transferId: String(transfer._id),
+      status,
+      patientName: transfer.patientName,
+      fromHospitalName: transfer.fromHospital.name,
+      toHospitalName: transfer.toHospital.name,
+      note: note || "",
+      route: transfer.route
+    });
+  }
 
   return res.status(200).json({ transfer });
 };
