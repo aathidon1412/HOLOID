@@ -1,9 +1,9 @@
-☐ Setup and finalize backend scaffold (`src/`): config, app, server, socket [Aathi]
-☐ Implement full auth flows: registration, JWT email-activation, login, logout, token verification, refresh tokens [Aathi]
-☐ Core models: `User`, `Hospital` (detailed fields + geo indexing) [Aathi]
-☐ Middleware: auth, RBAC, validation, global error handler [Aathi]
-☐ Email service integration for activation + alerts [Aathi]
-☐ Tests: auth integration tests + model tests [Aathi]
+✔ Setup and finalize backend scaffold (`src/`): config, app, server, socket [Aathi] @done (4/3/2026, 10:08:02 PM)
+✔ Implement full auth flows: registration, JWT email-activation, login, logout, token verification, refresh tokens [Aathi] @done (4/3/2026, 10:08:01 PM)
+✔ Core models: `User`, `Hospital` (detailed fields + geo indexing) [Aathi] @done (4/3/2026, 10:07:58 PM)
+✔ Middleware: auth, RBAC, validation, global error handler [Aathi] @done (4/3/2026, 10:07:57 PM)
+✔ Email service integration for activation + alerts [Aathi] @done (4/3/2026, 10:07:56 PM)
+✔ Tests: auth integration tests + model tests [Aathi] @done (4/3/2026, 10:08:07 PM)
 ☐ Resource models: bed types, numeric counts, per-ward breakdowns [Harsh]
 ☐ REST APIs: create/update inventory, change bed statuses, list by hospital/region [Harsh]
 ☐ Socket.IO integration: emit `bed-update` and `bed-status-changed`, room-per-hospital/region [Harsh]
