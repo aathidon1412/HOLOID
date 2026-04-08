@@ -4,9 +4,6 @@ const { Server } = require("socket.io");
 
 const app = require("./app");
 const connectDB = require("./config/db");
-const logisticsRoutes = require("./routes/logisticsRoutes");
-const commandCenterRoutes = require("./routes/commandCenterRoutes");
-const notificationRoutes = require("./routes/notificationRoutes");
 const createResourceRouter = require("./routes/resourceRoutes");
 
 dotenv.config();
@@ -29,11 +26,6 @@ const startServer = async () => {
 
     // Mount routes that need access to `io`
     app.use("/api/resources", createResourceRouter(io));
-
-    // Other routes
-    app.use("/api/logistics", logisticsRoutes);
-    app.use("/api/command-center", commandCenterRoutes);
-    app.use("/api/notifications", notificationRoutes);
 
     // Socket handlers
     io.use((socket, next) => {

@@ -2,13 +2,38 @@ const Hospital = require("../models/Hospital");
 const Transfer = require("../models/Transfer");
 const AuditLog = require("../models/AuditLog");
 
+const getRegionFromHospital = (hospital) =>
+  hospital.region || hospital.location?.state || hospital.location?.city || "UNKNOWN";
+
+const getAvailableBeds = (hospital, type) => {
+  if (typeof hospital.resources?.[type] === "number") {
+    return hospital.resources[type];
+  }
+
+  if (type === "generalBeds") return hospital.capacity?.availableBeds || 0;
+  if (type === "icuBeds") return hospital.capacity?.icuBeds || 0;
+  return 0;
+};
+
+const getTotalBeds = (hospital, type, available) => {
+  if (type === "generalBeds") {
+    return hospital.resources?.totalGeneralBeds || hospital.capacity?.totalBeds || available;
+  }
+
+  if (type === "icuBeds") {
+    return hospital.resources?.totalIcuBeds || hospital.capacity?.icuBeds || available;
+  }
+
+  return hospital.resources?.totalVentilatorBeds || available;
+};
+
 const getRegionOccupancySummary = async (req, res) => {
   const hospitals = await Hospital.find({ active: true }).lean();
 
   const summaryMap = new Map();
 
   for (const hospital of hospitals) {
-    const region = hospital.region || "UNKNOWN";
+    const region = getRegionFromHospital(hospital);
 
     if (!summaryMap.has(region)) {
       summaryMap.set(region, {
@@ -30,17 +55,17 @@ const getRegionOccupancySummary = async (req, res) => {
     const row = summaryMap.get(region);
     row.hospitals += 1;
 
-    const availableGeneral = hospital.resources?.generalBeds || 0;
-    const availableIcu = hospital.resources?.icuBeds || 0;
-    const availableVentilator = hospital.resources?.ventilatorBeds || 0;
+    const availableGeneral = getAvailableBeds(hospital, "generalBeds");
+    const availableIcu = getAvailableBeds(hospital, "icuBeds");
+    const availableVentilator = getAvailableBeds(hospital, "ventilatorBeds");
 
     row.available.generalBeds += availableGeneral;
     row.available.icuBeds += availableIcu;
     row.available.ventilatorBeds += availableVentilator;
 
-    const totalGeneral = hospital.resources?.totalGeneralBeds || availableGeneral;
-    const totalIcu = hospital.resources?.totalIcuBeds || availableIcu;
-    const totalVentilator = hospital.resources?.totalVentilatorBeds || availableVentilator;
+    const totalGeneral = getTotalBeds(hospital, "generalBeds", availableGeneral);
+    const totalIcu = getTotalBeds(hospital, "icuBeds", availableIcu);
+    const totalVentilator = getTotalBeds(hospital, "ventilatorBeds", availableVentilator);
 
     row.totalCapacity.generalBeds += totalGeneral;
     row.totalCapacity.icuBeds += totalIcu;
