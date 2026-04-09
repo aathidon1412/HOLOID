@@ -1,9 +1,9 @@
 const nodemailer = require("nodemailer");
 
 const createTransporter = () => {
-	const { SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS } = process.env;
+	const { SMTP_HOST, SMTP_PORT, SMTP_USERNAME, SMTP_PASSWORD } = process.env;
 
-	if (!SMTP_HOST || !SMTP_PORT || !SMTP_USER || !SMTP_PASS) {
+	if (!SMTP_HOST || !SMTP_PORT || !SMTP_USERNAME || !SMTP_PASSWORD) {
 		return null;
 	}
 
@@ -12,8 +12,8 @@ const createTransporter = () => {
 		port: Number(SMTP_PORT),
 		secure: Number(SMTP_PORT) === 465,
 		auth: {
-			user: SMTP_USER,
-			pass: SMTP_PASS,
+			user: SMTP_USERNAME,
+			pass: SMTP_PASSWORD,
 		},
 	});
 };
@@ -27,7 +27,7 @@ const sendActivationEmail = async ({ to, name, activationLink }) => {
 	}
 
 	await transporter.sendMail({
-		from: process.env.EMAIL_FROM || process.env.SMTP_USER,
+		from: process.env.EMAIL_FROM || process.env.SMTP_USERNAME,
 		to,
 		subject: "Activate your HOLOID account",
 		text: `Hi ${name},\n\nUse this link to activate your account:\n${activationLink}\n\nThis link expires soon.`,
@@ -56,7 +56,7 @@ const sendCriticalAlertEmail = async ({ to, hospitalName, bedType, remainingBeds
 	}
 
 	await transporter.sendMail({
-		from: process.env.EMAIL_FROM || process.env.SMTP_USER,
+		from: process.env.EMAIL_FROM || process.env.SMTP_USERNAME,
 		to,
 		subject: `Critical Bed Alert - ${hospitalName}`,
 		text: `Critical bed alert\nHospital: ${hospitalName}\nRegion: ${region}\nBed Type: ${bedType}\nRemaining Beds: ${remainingBeds}`,
@@ -96,7 +96,7 @@ const sendTransferEventEmail = async ({
 	}
 
 	await transporter.sendMail({
-		from: process.env.EMAIL_FROM || process.env.SMTP_USER,
+		from: process.env.EMAIL_FROM || process.env.SMTP_USERNAME,
 		to,
 		subject: `Transfer ${status.toUpperCase()} - ${patientName}`,
 		text: [

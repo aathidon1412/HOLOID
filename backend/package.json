@@ -5,6 +5,8 @@
   "main": "src/server.js",
   "scripts": {
     "test": "mocha --recursive --timeout 20000",
+    "test:jest": "npx jest src/__tests__ --runInBand --colors",
+    "test:all": "npm run test && npm run test:jest",
     "start": "node src/server.js",
     "dev": "nodemon src/server.js"
   },
