@@ -3,7 +3,7 @@ const mongoose = require("mongoose");
 const BED_TYPES = ["ICU", "General", "Ventilator", "Oxygen-supported"];
 const BED_STATUSES = ["Occupied", "Vacant", "Maintenance"];
 
-const bedStatusSchema = new mongoose.Schema(
+const wardBedSchema = new mongoose.Schema(
   {
     type: {
       type: String,
@@ -15,6 +15,48 @@ const bedStatusSchema = new mongoose.Schema(
       enum: BED_STATUSES,
       required: true,
       default: "Vacant",
+    },
+    count: {
+      type: Number,
+      required: true,
+      default: 0,
+      min: 0,
+    },
+  },
+  { _id: false }
+);
+
+const wardSchema = new mongoose.Schema(
+  {
+    wardName: {
+      type: String,
+      required: true,
+      trim: true,
+    },
+    beds: {
+      type: [wardBedSchema],
+      default: [],
+      validate: {
+        validator(value) {
+          if (!Array.isArray(value)) {
+            return false;
+          }
+
+          const seenTypeStatusPairs = new Set();
+          for (const bed of value) {
+            const pairKey = `${bed.type}:${bed.status}`;
+            if (seenTypeStatusPairs.has(pairKey)) {
+              return false;
+            }
+
+            seenTypeStatusPairs.add(pairKey);
+          }
+
+          return true;
+        },
+        message:
+          "Beds must use unique type/status pairs per ward with non-negative counts.",
+      },
     },
   },
   { _id: false }
@@ -33,27 +75,51 @@ const hospitalResourceInventorySchema = new mongoose.Schema(
       required: true,
       trim: true,
     },
-    beds: {
-      type: [bedStatusSchema],
+    wards: {
+      type: [wardSchema],
       required: true,
-      validate: {
-        validator: function (value) {
-          if (!Array.isArray(value) || value.length !== BED_TYPES.length) {
-            return false;
-          }
-
-          const seenTypes = value.map((entry) => entry.type);
-          return BED_TYPES.every((type) => seenTypes.includes(type));
-        },
-        message:
-          "Beds must include exactly one entry for each type: ICU, General, Ventilator, Oxygen-supported.",
-      },
+      default: [],
     },
   },
   {
     timestamps: true,
   }
 );
+
+hospitalResourceInventorySchema.index({
+  hospital: 1,
+  "wards.beds.type": 1,
+  "wards.beds.status": 1,
+});
+
+hospitalResourceInventorySchema.statics.getAvailableIcuBedsByHospital = async function (
+  hospitalId
+) {
+  const normalizedHospitalId =
+    typeof hospitalId === "string"
+      ? new mongoose.Types.ObjectId(hospitalId)
+      : hospitalId;
+
+  const result = await this.aggregate([
+    { $match: { hospital: normalizedHospitalId } },
+    { $unwind: "$wards" },
+    { $unwind: "$wards.beds" },
+    {
+      $match: {
+        "wards.beds.type": "ICU",
+        "wards.beds.status": "Vacant",
+      },
+    },
+    {
+      $group: {
+        _id: "$hospital",
+        totalAvailableIcuBeds: { $sum: "$wards.beds.count" },
+      },
+    },
+  ]);
+
+  return result[0] ? result[0].totalAvailableIcuBeds : 0;
+};
 
 module.exports = mongoose.model(
   "HospitalResourceInventory",

@@ -31,6 +31,10 @@
     "mongodb-memory-server": "^8.12.1",
     "nodemon": "^3.1.14",
     "socket.io": "^4.8.3",
-    "supertest": "^7.1.3"
+    "supertest": "^7.1.3",
+    "jest": "^30.2.0"
+  },
+  "jest": {
+    "testEnvironment": "node"
   }
 }
