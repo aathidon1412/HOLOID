@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>HOLOID | Admin Resource Dashboard</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <div class="dashboard-layout">
+      <aside class="dashboard-sidebar" aria-label="Primary navigation">
+        <div class="brand-mark">HD</div>
+        <nav class="sidebar-nav">
+          <button class="nav-dot active" type="button" aria-label="Inventory view">INV</button>
+          <button class="nav-dot" type="button" aria-label="Transfers view">TRF</button>
+          <button class="nav-dot" type="button" aria-label="Alerts view">ALT</button>
+        </nav>
+        <button class="nav-dot" type="button" aria-label="Settings">SET</button>
+      </aside>
+
+      <header class="dashboard-header">
+        <p class="header-title">Resource Inventory</p>
+        <div class="profile-tools">
+          <span class="avatar-chip">AD</span>
+          <button class="logout-btn" type="button">Logout</button>
+        </div>
+      </header>
+
+      <main class="dashboard-main">
+        <section class="content-head">
+          <h1>Per-Ward Bed Availability</h1>
+          <p>Live operational status across ICU, General, Ventilator, and Oxygen support beds.</p>
+        </section>
+
+        <section class="ward-grid" aria-label="Ward resource cards">
+          <article class="ward-card">
+            <h2>Ward A - Critical Care</h2>
+            <p class="ward-meta">Last sync: 2 min ago</p>
+            <ul class="bed-list">
+              <li class="bed-row">
+                <span class="bed-key"><span class="status-dot critical"></span>ICU</span>
+                <span class="bed-count">14</span>
+                <button class="icon-action" type="button" aria-label="Update ICU status in Ward A"></button>
+              </li>
+              <li class="bed-row">
+                <span class="bed-key"><span class="status-dot maintenance"></span>General</span>
+                <span class="bed-count">26</span>
+                <button class="icon-action" type="button" aria-label="Update General bed status in Ward A"></button>
+              </li>
+              <li class="bed-row">
+                <span class="bed-key"><span class="status-dot vacant"></span>Ventilator</span>
+                <span class="bed-count">7</span>
+                <button class="icon-action" type="button" aria-label="Update Ventilator bed status in Ward A"></button>
+              </li>
+              <li class="bed-row">
+                <span class="bed-key"><span class="status-dot critical"></span>Oxygen</span>
+                <span class="bed-count">11</span>
+                <button class="icon-action" type="button" aria-label="Update Oxygen bed status in Ward A"></button>
+              </li>
+            </ul>
+          </article>
+
+          <article class="ward-card">
+            <h2>Ward B - Trauma</h2>
+            <p class="ward-meta">Last sync: 4 min ago</p>
+            <ul class="bed-list">
+              <li class="bed-row">
+                <span class="bed-key"><span class="status-dot maintenance"></span>ICU</span>
+                <span class="bed-count">8</span>
+                <button class="icon-action" type="button" aria-label="Update ICU status in Ward B"></button>
+              </li>
+              <li class="bed-row">
+                <span class="bed-key"><span class="status-dot vacant"></span>General</span>
+                <span class="bed-count">33</span>
+                <button class="icon-action" type="button" aria-label="Update General bed status in Ward B"></button>
+              </li>
+              <li class="bed-row">
+                <span class="bed-key"><span class="status-dot maintenance"></span>Ventilator</span>
+                <span class="bed-count">5</span>
+                <button class="icon-action" type="button" aria-label="Update Ventilator bed status in Ward B"></button>
+              </li>
+              <li class="bed-row">
+                <span class="bed-key"><span class="status-dot vacant"></span>Oxygen</span>
+                <span class="bed-count">18</span>
+                <button class="icon-action" type="button" aria-label="Update Oxygen bed status in Ward B"></button>
+              </li>
+            </ul>
+          </article>
+
+          <article class="ward-card">
+            <h2>Ward C - Internal Medicine</h2>
+            <p class="ward-meta">Last sync: 1 min ago</p>
+            <ul class="bed-list">
+              <li class="bed-row">
+                <span class="bed-key"><span class="status-dot vacant"></span>ICU</span>
+                <span class="bed-count">6</span>
+                <button class="icon-action" type="button" aria-label="Update ICU status in Ward C"></button>
+              </li>
+              <li class="bed-row">
+                <span class="bed-key"><span class="status-dot critical"></span>General</span>
+                <span class="bed-count">39</span>
+                <button class="icon-action" type="button" aria-label="Update General bed status in Ward C"></button>
+              </li>
+              <li class="bed-row">
+                <span class="bed-key"><span class="status-dot critical"></span>Ventilator</span>
+                <span class="bed-count">9</span>
+                <button class="icon-action" type="button" aria-label="Update Ventilator bed status in Ward C"></button>
+              </li>
+              <li class="bed-row">
+                <span class="bed-key"><span class="status-dot maintenance"></span>Oxygen</span>
+                <span class="bed-count">22</span>
+                <button class="icon-action" type="button" aria-label="Update Oxygen bed status in Ward C"></button>
+              </li>
+            </ul>
+          </article>
+
+          <article class="ward-card">
+            <h2>Ward D - Recovery</h2>
+            <p class="ward-meta">Last sync: 3 min ago</p>
+            <ul class="bed-list">
+              <li class="bed-row">
+                <span class="bed-key"><span class="status-dot maintenance"></span>ICU</span>
+                <span class="bed-count">4</span>
+                <button class="icon-action" type="button" aria-label="Update ICU status in Ward D"></button>
+              </li>
+              <li class="bed-row">
+                <span class="bed-key"><span class="status-dot vacant"></span>General</span>
+                <span class="bed-count">28</span>
+                <button class="icon-action" type="button" aria-label="Update General bed status in Ward D"></button>
+              </li>
+              <li class="bed-row">
+                <span class="bed-key"><span class="status-dot vacant"></span>Ventilator</span>
+                <span class="bed-count">3</span>
+                <button class="icon-action" type="button" aria-label="Update Ventilator bed status in Ward D"></button>
+              </li>
+              <li class="bed-row">
+                <span class="bed-key"><span class="status-dot critical"></span>Oxygen</span>
+                <span class="bed-count">16</span>
+                <button class="icon-action" type="button" aria-label="Update Oxygen bed status in Ward D"></button>
+              </li>
+            </ul>
+          </article>
+        </section>
+      </main>
+    </div>
+  </body>
+</html>

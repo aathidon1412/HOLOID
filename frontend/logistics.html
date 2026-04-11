@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>HOLOID | Logistics & Transfer</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <div class="dashboard-layout">
+      <aside class="dashboard-sidebar" aria-label="Primary navigation">
+        <div class="brand-mark">HD</div>
+        <nav class="sidebar-nav">
+          <button class="nav-dot" type="button" aria-label="Inventory view">INV</button>
+          <button class="nav-dot active" type="button" aria-label="Transfers view">TRF</button>
+          <button class="nav-dot" type="button" aria-label="Alerts view">ALT</button>
+        </nav>
+        <button class="nav-dot" type="button" aria-label="Settings">SET</button>
+      </aside>
+
+      <header class="dashboard-header">
+        <p class="header-title">Logistics & Transfer</p>
+        <div class="profile-tools">
+          <span class="avatar-chip">AD</span>
+          <button class="logout-btn" type="button">Logout</button>
+        </div>
+      </header>
+
+      <main class="dashboard-main">
+        <section class="content-head">
+          <h1>Patient Transfer Coordination</h1>
+          <p>Find the nearest available hospital and track transfer progress in real time.</p>
+        </section>
+
+        <section class="logistics-grid" aria-label="Logistics and transfer workspace">
+          <div class="hospital-column">
+            <article class="search-panel">
+              <h2>Nearest Available Hospital</h2>
+              <p>Refine search by bed requirement and region.</p>
+
+              <form class="search-controls" action="#" method="get">
+                <div class="select-wrap">
+                  <label for="bed-type">Required Bed Type</label>
+                  <select id="bed-type" name="bedType">
+                    <option value="icu">ICU</option>
+                    <option value="general">General</option>
+                    <option value="ventilator">Ventilator</option>
+                    <option value="oxygen">Oxygen</option>
+                  </select>
+                </div>
+
+                <div class="select-wrap">
+                  <label for="region">Region</label>
+                  <select id="region" name="region">
+                    <option value="north-zone">North Zone</option>
+                    <option value="central-zone">Central Zone</option>
+                    <option value="south-zone">South Zone</option>
+                    <option value="all">All Regions</option>
+                  </select>
+                </div>
+
+                <button class="search-btn" type="submit">Search</button>
+              </form>
+
+              <div class="result-stack" aria-live="polite">
+                <article class="result-card">
+                  <div class="result-top">
+                    <h3 class="hospital-name">Mercy General Hospital</h3>
+                    <span class="distance-tag">2.3 km</span>
+                  </div>
+                  <div class="availability-line">
+                    <span>Available ICU Beds</span>
+                    <span class="availability-count">11</span>
+                  </div>
+                </article>
+
+                <article class="result-card">
+                  <div class="result-top">
+                    <h3 class="hospital-name">St. Helena Medical Center</h3>
+                    <span class="distance-tag">4.7 km</span>
+                  </div>
+                  <div class="availability-line">
+                    <span>Available ICU Beds</span>
+                    <span class="availability-count">8</span>
+                  </div>
+                </article>
+
+                <article class="result-card">
+                  <div class="result-top">
+                    <h3 class="hospital-name">Riverside Care Institute</h3>
+                    <span class="distance-tag">6.1 km</span>
+                  </div>
+                  <div class="availability-line">
+                    <span>Available ICU Beds</span>
+                    <span class="availability-count">5</span>
+                  </div>
+                </article>
+              </div>
+            </article>
+          </div>
+
+          <div class="timeline-column">
+            <article class="timeline-panel">
+              <h2>Transfer Timeline</h2>
+              <p>Patient ID: TR-2048</p>
+
+              <ol class="transfer-timeline" aria-label="Current transfer status timeline">
+                <li class="timeline-step past">
+                  <span class="timeline-node" aria-hidden="true"></span>
+                  <div class="timeline-copy">
+                    <h3>Requested</h3>
+                    <p>10:12 AM, Command Center confirmed request</p>
+                  </div>
+                </li>
+
+                <li class="timeline-step past">
+                  <span class="timeline-node" aria-hidden="true"></span>
+                  <div class="timeline-copy">
+                    <h3>Dispatched</h3>
+                    <p>10:21 AM, Ambulance team assigned</p>
+                  </div>
+                </li>
+
+                <li class="timeline-step current">
+                  <span class="timeline-node" aria-hidden="true"></span>
+                  <div class="timeline-copy">
+                    <h3>In Transit</h3>
+                    <p>10:34 AM, ETA 9 minutes</p>
+                  </div>
+                </li>
+
+                <li class="timeline-step future">
+                  <span class="timeline-node" aria-hidden="true"></span>
+                  <div class="timeline-copy">
+                    <h3>Completed</h3>
+                    <p>Awaiting hospital arrival confirmation</p>
+                  </div>
+                </li>
+              </ol>
+            </article>
+          </div>
+        </section>
+      </main>
+    </div>
+  </body>
+</html>

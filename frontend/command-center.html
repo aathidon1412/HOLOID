@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>HOLOID | Government Command Center</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <div class="dashboard-layout">
+      <aside class="dashboard-sidebar" aria-label="Primary navigation">
+        <div class="brand-mark">HD</div>
+        <nav class="sidebar-nav">
+          <button class="nav-dot" type="button" aria-label="Inventory view">INV</button>
+          <button class="nav-dot" type="button" aria-label="Transfers view">TRF</button>
+          <button class="nav-dot active" type="button" aria-label="Command center view">CMD</button>
+        </nav>
+        <button class="nav-dot" type="button" aria-label="Settings">SET</button>
+      </aside>
+
+      <header class="dashboard-header">
+        <p class="header-title">Government Command Center</p>
+        <div class="profile-tools">
+          <span class="avatar-chip">GC</span>
+          <button class="logout-btn" type="button">Logout</button>
+        </div>
+      </header>
+
+      <main class="dashboard-main">
+        <section class="content-head">
+          <h1>Regional Bed Capacity Overview</h1>
+          <p>Macro analytics for district-level occupancy, availability, and escalation risk.</p>
+        </section>
+
+        <section class="command-center-shell" aria-label="Macro analytics dashboard">
+          <section class="macro-metrics" aria-label="Top-level regional metrics">
+            <article class="metric-card alert">
+              <p class="metric-label">Total Region Occupancy</p>
+              <p class="metric-value">87%</p>
+              <p class="metric-note">+4.2% in last 6 hours</p>
+            </article>
+
+            <article class="metric-card">
+              <p class="metric-label">Available ICU Beds</p>
+              <p class="metric-value">126</p>
+              <p class="metric-note">Across 42 hospitals</p>
+            </article>
+
+            <article class="metric-card">
+              <p class="metric-label">Ventilator Utilization</p>
+              <p class="metric-value">73%</p>
+              <p class="metric-note">Stable across metro cluster</p>
+            </article>
+
+            <article class="metric-card">
+              <p class="metric-label">Transfers In Progress</p>
+              <p class="metric-value">19</p>
+              <p class="metric-note">5 marked urgent</p>
+            </article>
+          </section>
+
+          <section class="critical-zone" aria-label="Critical hospitals list">
+            <h2>Critical Hospitals</h2>
+            <p>Facilities nearing or exceeding safe occupancy threshold.</p>
+
+            <div class="critical-grid" role="table" aria-label="Critical hospitals table">
+              <div class="critical-row header" role="row">
+                <span role="columnheader">Hospital</span>
+                <span role="columnheader">Occupancy</span>
+                <span role="columnheader">ICU Available</span>
+                <span role="columnheader">Action</span>
+              </div>
+
+              <div class="critical-row" role="row">
+                <span class="hospital-col" role="cell">North City Medical Institute</span>
+                <span class="value-col" role="cell">96%</span>
+                <span class="status-chip" role="cell">2 beds</span>
+                <span class="action-col" role="cell"><button class="critical-action" type="button">Escalate</button></span>
+              </div>
+
+              <div class="critical-row" role="row">
+                <span class="hospital-col" role="cell">St. Adrian Trauma Center</span>
+                <span class="value-col" role="cell">94%</span>
+                <span class="status-chip" role="cell">4 beds</span>
+                <span class="action-col" role="cell"><button class="critical-action" type="button">Escalate</button></span>
+              </div>
+
+              <div class="critical-row" role="row">
+                <span class="hospital-col" role="cell">Mercy South General</span>
+                <span class="value-col" role="cell">92%</span>
+                <span class="status-chip" role="cell">3 beds</span>
+                <span class="action-col" role="cell"><button class="critical-action" type="button">Escalate</button></span>
+              </div>
+
+              <div class="critical-row" role="row">
+                <span class="hospital-col" role="cell">Riverside Emergency Hospital</span>
+                <span class="value-col" role="cell">91%</span>
+                <span class="status-chip" role="cell">5 beds</span>
+                <span class="action-col" role="cell"><button class="critical-action" type="button">Escalate</button></span>
+              </div>
+            </div>
+          </section>
+        </section>
+      </main>
+    </div>
+  </body>
+</html>

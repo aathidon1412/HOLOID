@@ -1,0 +1,608 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>HOLOID | Hospital Resource Access</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <main class="auth-layout" id="auth-view">
+      <section class="visual-panel" aria-hidden="true">
+        <div class="network">
+          <span class="line line-1"></span>
+          <span class="line line-2"></span>
+          <span class="line line-3"></span>
+          <span class="line line-4"></span>
+          <span class="node node-a"></span>
+          <span class="node node-b"></span>
+          <span class="node node-c"></span>
+          <span class="node node-d"></span>
+        </div>
+
+        <div class="visual-copy">
+          <p class="eyebrow">HOLOID Platform</p>
+          <h1>Hospital Bed &amp; Resource Management System</h1>
+          <p>
+            Unified operational visibility for command centers, logistics teams,
+            and hospital admins.
+          </p>
+          <div class="status-legend">
+            <span class="status-pill vacant">Vacant</span>
+            <span class="status-pill maintenance">Maintenance</span>
+            <span class="status-pill critical">Occupied / Critical</span>
+          </div>
+        </div>
+      </section>
+
+      <section class="auth-panel">
+        <div class="auth-shell">
+          <header class="auth-header">
+            <h2>Secure Access Portal</h2>
+            <p>Sign in or create an account to continue.</p>
+          </header>
+
+          <div id="login-container">
+            <form class="form-block" id="signin-form" autocomplete="on">
+              <h3>Sign In</h3>
+              <div class="field">
+                <input id="signin-email" type="email" placeholder=" " required />
+                <label for="signin-email">Email</label>
+              </div>
+              <div class="field">
+                <input
+                  id="signin-password"
+                  type="password"
+                  placeholder=" "
+                  required
+                />
+                <label for="signin-password">Password</label>
+              </div>
+              <button class="btn-primary" type="submit">Sign In</button>
+              <p class="toggle-text">New user? <span id="show-register">Create an account</span></p>
+            </form>
+          </div>
+
+          <div id="register-container">
+            <form class="form-block" id="register-form" autocomplete="on">
+              <h3>Registration</h3>
+              <div class="field">
+                <input id="register-name" type="text" placeholder=" " required />
+                <label for="register-name">Full Name</label>
+              </div>
+              <div class="field">
+                <input id="register-email" type="email" placeholder=" " required />
+                <label for="register-email">Work Email</label>
+              </div>
+              <div class="field">
+                <input id="register-password" type="password" placeholder=" " required />
+                <label for="register-password">Create Password</label>
+              </div>
+              <button class="btn-secondary" type="submit">Create Account</button>
+              <p class="toggle-text">Already have an account? <span id="show-login">Sign in</span></p>
+            </form>
+          </div>
+
+          <p class="auth-meta">Enterprise-grade access control for hospital operations.</p>
+        </div>
+      </section>
+    </main>
+
+    <div class="dashboard-layout app-shell" id="app-shell">
+      <aside class="dashboard-sidebar" aria-label="Primary navigation">
+        <div class="brand-mark">HD</div>
+        <nav class="sidebar-nav">
+          <button class="nav-dot active" type="button" aria-label="Inventory view" data-view="inventory">INV</button>
+          <button class="nav-dot" type="button" aria-label="Transfers view" data-view="logistics">TRF</button>
+          <button class="nav-dot" type="button" aria-label="Command center view" data-view="command">CMD</button>
+        </nav>
+        <button class="nav-dot" id="cycle-view-btn" type="button" aria-label="Cycle active view">SET</button>
+      </aside>
+
+      <header class="dashboard-header">
+        <p class="header-title" id="header-title">Resource Inventory</p>
+        <div class="profile-tools">
+          <span class="avatar-chip">AD</span>
+          <button class="logout-btn" type="button" id="logout-btn">Logout</button>
+        </div>
+      </header>
+
+      <main class="dashboard-main">
+        <section class="app-view" id="view-inventory" data-view="inventory">
+          <section class="content-head">
+            <h1>Per-Ward Bed Availability</h1>
+            <p>Live operational status across ICU, General, Ventilator, and Oxygen support beds.</p>
+          </section>
+
+          <section class="ward-grid" aria-label="Ward resource cards">
+            <article class="ward-card">
+              <h2>Ward A - Critical Care</h2>
+              <p class="ward-meta">Last sync: 2 min ago</p>
+              <ul class="bed-list">
+                <li class="bed-row">
+                  <span class="bed-key"><span class="status-dot critical"></span>ICU</span>
+                  <span class="bed-count">14</span>
+                  <button class="icon-action" type="button" aria-label="Update ICU status in Ward A"></button>
+                </li>
+                <li class="bed-row">
+                  <span class="bed-key"><span class="status-dot maintenance"></span>General</span>
+                  <span class="bed-count">26</span>
+                  <button class="icon-action" type="button" aria-label="Update General bed status in Ward A"></button>
+                </li>
+                <li class="bed-row">
+                  <span class="bed-key"><span class="status-dot vacant"></span>Ventilator</span>
+                  <span class="bed-count">7</span>
+                  <button class="icon-action" type="button" aria-label="Update Ventilator bed status in Ward A"></button>
+                </li>
+                <li class="bed-row">
+                  <span class="bed-key"><span class="status-dot critical"></span>Oxygen</span>
+                  <span class="bed-count">11</span>
+                  <button class="icon-action" type="button" aria-label="Update Oxygen bed status in Ward A"></button>
+                </li>
+              </ul>
+            </article>
+
+            <article class="ward-card">
+              <h2>Ward B - Trauma</h2>
+              <p class="ward-meta">Last sync: 4 min ago</p>
+              <ul class="bed-list">
+                <li class="bed-row">
+                  <span class="bed-key"><span class="status-dot maintenance"></span>ICU</span>
+                  <span class="bed-count">8</span>
+                  <button class="icon-action" type="button" aria-label="Update ICU status in Ward B"></button>
+                </li>
+                <li class="bed-row">
+                  <span class="bed-key"><span class="status-dot vacant"></span>General</span>
+                  <span class="bed-count">33</span>
+                  <button class="icon-action" type="button" aria-label="Update General bed status in Ward B"></button>
+                </li>
+                <li class="bed-row">
+                  <span class="bed-key"><span class="status-dot maintenance"></span>Ventilator</span>
+                  <span class="bed-count">5</span>
+                  <button class="icon-action" type="button" aria-label="Update Ventilator bed status in Ward B"></button>
+                </li>
+                <li class="bed-row">
+                  <span class="bed-key"><span class="status-dot vacant"></span>Oxygen</span>
+                  <span class="bed-count">18</span>
+                  <button class="icon-action" type="button" aria-label="Update Oxygen bed status in Ward B"></button>
+                </li>
+              </ul>
+            </article>
+
+            <article class="ward-card">
+              <h2>Ward C - Internal Medicine</h2>
+              <p class="ward-meta">Last sync: 1 min ago</p>
+              <ul class="bed-list">
+                <li class="bed-row">
+                  <span class="bed-key"><span class="status-dot vacant"></span>ICU</span>
+                  <span class="bed-count">6</span>
+                  <button class="icon-action" type="button" aria-label="Update ICU status in Ward C"></button>
+                </li>
+                <li class="bed-row">
+                  <span class="bed-key"><span class="status-dot critical"></span>General</span>
+                  <span class="bed-count">39</span>
+                  <button class="icon-action" type="button" aria-label="Update General bed status in Ward C"></button>
+                </li>
+                <li class="bed-row">
+                  <span class="bed-key"><span class="status-dot critical"></span>Ventilator</span>
+                  <span class="bed-count">9</span>
+                  <button class="icon-action" type="button" aria-label="Update Ventilator bed status in Ward C"></button>
+                </li>
+                <li class="bed-row">
+                  <span class="bed-key"><span class="status-dot maintenance"></span>Oxygen</span>
+                  <span class="bed-count">22</span>
+                  <button class="icon-action" type="button" aria-label="Update Oxygen bed status in Ward C"></button>
+                </li>
+              </ul>
+            </article>
+
+            <article class="ward-card">
+              <h2>Ward D - Recovery</h2>
+              <p class="ward-meta">Last sync: 3 min ago</p>
+              <ul class="bed-list">
+                <li class="bed-row">
+                  <span class="bed-key"><span class="status-dot maintenance"></span>ICU</span>
+                  <span class="bed-count">4</span>
+                  <button class="icon-action" type="button" aria-label="Update ICU status in Ward D"></button>
+                </li>
+                <li class="bed-row">
+                  <span class="bed-key"><span class="status-dot vacant"></span>General</span>
+                  <span class="bed-count">28</span>
+                  <button class="icon-action" type="button" aria-label="Update General bed status in Ward D"></button>
+                </li>
+                <li class="bed-row">
+                  <span class="bed-key"><span class="status-dot vacant"></span>Ventilator</span>
+                  <span class="bed-count">3</span>
+                  <button class="icon-action" type="button" aria-label="Update Ventilator bed status in Ward D"></button>
+                </li>
+                <li class="bed-row">
+                  <span class="bed-key"><span class="status-dot critical"></span>Oxygen</span>
+                  <span class="bed-count">16</span>
+                  <button class="icon-action" type="button" aria-label="Update Oxygen bed status in Ward D"></button>
+                </li>
+              </ul>
+            </article>
+          </section>
+        </section>
+
+        <section class="app-view is-hidden" id="view-logistics" data-view="logistics">
+          <section class="content-head">
+            <h1>Patient Transfer Coordination</h1>
+            <p>Find the nearest available hospital and track transfer progress in real time.</p>
+          </section>
+
+          <section class="logistics-grid" aria-label="Logistics and transfer workspace">
+            <div class="hospital-column">
+              <article class="search-panel">
+                <h2>Nearest Available Hospital</h2>
+                <p>Refine search by bed requirement and region.</p>
+
+                <form class="search-controls" id="hospital-search-form" action="#" method="get">
+                  <div class="select-wrap">
+                    <label for="bed-type">Required Bed Type</label>
+                    <select id="bed-type" class="dashboard-select" name="bedType">
+                      <option value="icu">ICU</option>
+                      <option value="general">General</option>
+                      <option value="ventilator">Ventilator</option>
+                      <option value="oxygen">Oxygen</option>
+                    </select>
+                  </div>
+
+                  <div class="select-wrap">
+                    <label for="region">Region</label>
+                    <select id="region" class="dashboard-select" name="region">
+                      <option value="north-zone">North Zone</option>
+                      <option value="central-zone">Central Zone</option>
+                      <option value="south-zone">South Zone</option>
+                      <option value="all">All Regions</option>
+                    </select>
+                  </div>
+
+                  <button class="search-btn" type="submit">Search</button>
+                </form>
+
+                <div class="result-stack" aria-live="polite" id="result-stack">
+                  <article class="result-card" data-icu="11" data-general="27" data-ventilator="8" data-oxygen="19">
+                    <div class="result-top">
+                      <h3 class="hospital-name">Mercy General Hospital</h3>
+                      <span class="distance-tag">2.3 km</span>
+                    </div>
+                    <div class="availability-line">
+                      <span class="availability-label">Available ICU Beds</span>
+                      <span class="availability-count">11</span>
+                    </div>
+                  </article>
+
+                  <article class="result-card" data-icu="8" data-general="21" data-ventilator="4" data-oxygen="13">
+                    <div class="result-top">
+                      <h3 class="hospital-name">St. Helena Medical Center</h3>
+                      <span class="distance-tag">4.7 km</span>
+                    </div>
+                    <div class="availability-line">
+                      <span class="availability-label">Available ICU Beds</span>
+                      <span class="availability-count">8</span>
+                    </div>
+                  </article>
+
+                  <article class="result-card" data-icu="5" data-general="14" data-ventilator="2" data-oxygen="9">
+                    <div class="result-top">
+                      <h3 class="hospital-name">Riverside Care Institute</h3>
+                      <span class="distance-tag">6.1 km</span>
+                    </div>
+                    <div class="availability-line">
+                      <span class="availability-label">Available ICU Beds</span>
+                      <span class="availability-count">5</span>
+                    </div>
+                  </article>
+                </div>
+
+                <p class="search-empty is-hidden" id="search-empty">No hospitals match the selected criteria.</p>
+              </article>
+            </div>
+
+            <div class="timeline-column">
+              <article class="timeline-panel">
+                <h2>Transfer Timeline</h2>
+                <p>Patient ID: TR-2048</p>
+
+                <ol class="transfer-timeline" aria-label="Current transfer status timeline">
+                  <li class="timeline-step past">
+                    <span class="timeline-node" aria-hidden="true"></span>
+                    <div class="timeline-copy">
+                      <h3>Requested</h3>
+                      <p>10:12 AM, Command Center confirmed request</p>
+                    </div>
+                  </li>
+
+                  <li class="timeline-step past">
+                    <span class="timeline-node" aria-hidden="true"></span>
+                    <div class="timeline-copy">
+                      <h3>Dispatched</h3>
+                      <p>10:21 AM, Ambulance team assigned</p>
+                    </div>
+                  </li>
+
+                  <li class="timeline-step current">
+                    <span class="timeline-node" aria-hidden="true"></span>
+                    <div class="timeline-copy">
+                      <h3>In Transit</h3>
+                      <p>10:34 AM, ETA 9 minutes</p>
+                    </div>
+                  </li>
+
+                  <li class="timeline-step future">
+                    <span class="timeline-node" aria-hidden="true"></span>
+                    <div class="timeline-copy">
+                      <h3>Completed</h3>
+                      <p>Awaiting hospital arrival confirmation</p>
+                    </div>
+                  </li>
+                </ol>
+              </article>
+            </div>
+          </section>
+        </section>
+
+        <section class="app-view is-hidden" id="view-command" data-view="command">
+          <section class="content-head">
+            <h1>Regional Bed Capacity Overview</h1>
+            <p>Macro analytics for district-level occupancy, availability, and escalation risk.</p>
+          </section>
+
+          <section class="command-center-shell" aria-label="Macro analytics dashboard">
+            <section class="macro-metrics" aria-label="Top-level regional metrics">
+              <article class="metric-card alert">
+                <p class="metric-label">Total Region Occupancy</p>
+                <p class="metric-value">87%</p>
+                <p class="metric-note">+4.2% in last 6 hours</p>
+              </article>
+
+              <article class="metric-card">
+                <p class="metric-label">Available ICU Beds</p>
+                <p class="metric-value">126</p>
+                <p class="metric-note">Across 42 hospitals</p>
+              </article>
+
+              <article class="metric-card">
+                <p class="metric-label">Ventilator Utilization</p>
+                <p class="metric-value">73%</p>
+                <p class="metric-note">Stable across metro cluster</p>
+              </article>
+
+              <article class="metric-card">
+                <p class="metric-label">Transfers In Progress</p>
+                <p class="metric-value">19</p>
+                <p class="metric-note">5 marked urgent</p>
+              </article>
+            </section>
+
+            <section class="critical-zone" aria-label="Critical hospitals list">
+              <h2>Critical Hospitals</h2>
+              <p>Facilities nearing or exceeding safe occupancy threshold.</p>
+
+              <div class="critical-grid" role="table" aria-label="Critical hospitals table">
+                <div class="critical-row header" role="row">
+                  <span role="columnheader">Hospital</span>
+                  <span role="columnheader">Occupancy</span>
+                  <span role="columnheader">ICU Available</span>
+                  <span role="columnheader">Action</span>
+                </div>
+
+                <div class="critical-row" role="row">
+                  <span class="hospital-col" role="cell">North City Medical Institute</span>
+                  <span class="value-col" role="cell">96%</span>
+                  <span class="status-chip" role="cell">2 beds</span>
+                  <span class="action-col" role="cell"><button class="critical-action" type="button">Escalate</button></span>
+                </div>
+
+                <div class="critical-row" role="row">
+                  <span class="hospital-col" role="cell">St. Adrian Trauma Center</span>
+                  <span class="value-col" role="cell">94%</span>
+                  <span class="status-chip" role="cell">4 beds</span>
+                  <span class="action-col" role="cell"><button class="critical-action" type="button">Escalate</button></span>
+                </div>
+
+                <div class="critical-row" role="row">
+                  <span class="hospital-col" role="cell">Mercy South General</span>
+                  <span class="value-col" role="cell">92%</span>
+                  <span class="status-chip" role="cell">3 beds</span>
+                  <span class="action-col" role="cell"><button class="critical-action" type="button">Escalate</button></span>
+                </div>
+
+                <div class="critical-row" role="row">
+                  <span class="hospital-col" role="cell">Riverside Emergency Hospital</span>
+                  <span class="value-col" role="cell">91%</span>
+                  <span class="status-chip" role="cell">5 beds</span>
+                  <span class="action-col" role="cell"><button class="critical-action" type="button">Escalate</button></span>
+                </div>
+              </div>
+            </section>
+          </section>
+        </section>
+      </main>
+    </div>
+
+    <script>
+      (function () {
+        var authView = document.getElementById("auth-view");
+        var appShell = document.getElementById("app-shell");
+        var loginContainer = document.getElementById("login-container");
+        var registerContainer = document.getElementById("register-container");
+        var showRegister = document.getElementById("show-register");
+        var showLogin = document.getElementById("show-login");
+        var headerTitle = document.getElementById("header-title");
+        var logoutBtn = document.getElementById("logout-btn");
+        var navButtons = Array.prototype.slice.call(document.querySelectorAll(".nav-dot[data-view]"));
+        var views = Array.prototype.slice.call(document.querySelectorAll(".app-view"));
+        var cycleViewBtn = document.getElementById("cycle-view-btn");
+        var viewOrder = ["inventory", "logistics", "command"];
+        var viewTitles = {
+          inventory: "Resource Inventory",
+          logistics: "Logistics & Transfer",
+          command: "Government Command Center"
+        };
+
+        function setActiveView(viewName) {
+          views.forEach(function (view) {
+            var isMatch = view.getAttribute("data-view") === viewName;
+            view.classList.toggle("is-hidden", !isMatch);
+          });
+
+          navButtons.forEach(function (button) {
+            var isActive = button.getAttribute("data-view") === viewName;
+            button.classList.toggle("active", isActive);
+          });
+
+          headerTitle.textContent = viewTitles[viewName] || "Dashboard";
+        }
+
+        function enterApp(defaultView) {
+          authView.classList.add("is-hidden");
+          appShell.classList.add("is-active");
+          setActiveView(defaultView || "inventory");
+        }
+
+        function showAuthContainer(showContainer, hideContainer) {
+          if (!showContainer || !hideContainer) {
+            return;
+          }
+          hideContainer.style.display = "none";
+          showContainer.style.display = "block";
+          showContainer.classList.remove("fade-in-panel");
+          void showContainer.offsetWidth;
+          showContainer.classList.add("fade-in-panel");
+        }
+
+        function resetAuthToggle() {
+          if (loginContainer) {
+            loginContainer.style.display = "block";
+            loginContainer.classList.remove("fade-in-panel");
+          }
+          if (registerContainer) {
+            registerContainer.style.display = "none";
+            registerContainer.classList.remove("fade-in-panel");
+          }
+        }
+
+        function exitApp() {
+          appShell.classList.remove("is-active");
+          authView.classList.remove("is-hidden");
+          resetAuthToggle();
+        }
+
+        if (showRegister) {
+          showRegister.addEventListener("click", function () {
+            showAuthContainer(registerContainer, loginContainer);
+          });
+        }
+
+        if (showLogin) {
+          showLogin.addEventListener("click", function () {
+            showAuthContainer(loginContainer, registerContainer);
+          });
+        }
+
+        resetAuthToggle();
+
+        document.getElementById("signin-form").addEventListener("submit", function (event) {
+          event.preventDefault();
+          enterApp("inventory");
+        });
+
+        document.getElementById("register-form").addEventListener("submit", function (event) {
+          event.preventDefault();
+          enterApp("inventory");
+        });
+
+        navButtons.forEach(function (button) {
+          button.addEventListener("click", function () {
+            setActiveView(button.getAttribute("data-view"));
+          });
+        });
+
+        cycleViewBtn.addEventListener("click", function () {
+          var current = navButtons.find(function (button) {
+            return button.classList.contains("active");
+          });
+          var currentView = current ? current.getAttribute("data-view") : "inventory";
+          var nextIndex = (viewOrder.indexOf(currentView) + 1) % viewOrder.length;
+          setActiveView(viewOrder[nextIndex]);
+        });
+
+        logoutBtn.addEventListener("click", function () {
+          exitApp();
+        });
+
+        var states = ["vacant", "maintenance", "critical"];
+        Array.prototype.slice.call(document.querySelectorAll(".icon-action")).forEach(function (button) {
+          button.addEventListener("click", function () {
+            var row = button.closest(".bed-row");
+            if (!row) {
+              return;
+            }
+            var dot = row.querySelector(".status-dot");
+            if (!dot) {
+              return;
+            }
+            var currentIndex = states.findIndex(function (state) {
+              return dot.classList.contains(state);
+            });
+            var nextState = states[(currentIndex + 1) % states.length];
+            dot.classList.remove("vacant", "maintenance", "critical");
+            dot.classList.add(nextState);
+          });
+        });
+
+        var hospitalSearchForm = document.getElementById("hospital-search-form");
+        var bedTypeSelect = document.getElementById("bed-type");
+        var searchEmpty = document.getElementById("search-empty");
+        var bedTypeLabels = {
+          icu: "ICU",
+          general: "General",
+          ventilator: "Ventilator",
+          oxygen: "Oxygen"
+        };
+
+        hospitalSearchForm.addEventListener("submit", function (event) {
+          event.preventDefault();
+          var selectedType = bedTypeSelect.value;
+          var visibleCount = 0;
+
+          Array.prototype.slice.call(document.querySelectorAll(".result-card")).forEach(function (card) {
+            var available = Number(card.getAttribute("data-" + selectedType) || 0);
+            var label = card.querySelector(".availability-label");
+            var count = card.querySelector(".availability-count");
+
+            if (label) {
+              label.textContent = "Available " + bedTypeLabels[selectedType] + " Beds";
+            }
+            if (count) {
+              count.textContent = String(available);
+            }
+
+            var isVisible = available > 0;
+            card.classList.toggle("is-hidden", !isVisible);
+            if (isVisible) {
+              visibleCount += 1;
+            }
+          });
+
+          searchEmpty.classList.toggle("is-hidden", visibleCount > 0);
+        });
+
+        Array.prototype.slice.call(document.querySelectorAll(".critical-action")).forEach(function (button) {
+          button.addEventListener("click", function () {
+            var escalated = button.classList.toggle("is-escalated");
+            button.textContent = escalated ? "Escalated" : "Escalate";
+          });
+        });
+      })();
+    </script>
+  </body>
+</html>
