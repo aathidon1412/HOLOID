@@ -10,12 +10,13 @@
       href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
       rel="stylesheet"
     />
+    <link rel="icon" type="image/png" href="Gemini_Generated_Image_nmgr3pnmgr3pnmgr.png" />
     <link rel="stylesheet" href="style.css" />
   </head>
   <body>
     <div class="dashboard-layout">
       <aside class="dashboard-sidebar" aria-label="Primary navigation">
-        <div class="brand-mark">HD</div>
+        <img src="Gemini_Generated_Image_nmgr3pnmgr3pnmgr.png" alt="HOLOID Logo" class="brand-logo" />
         <nav class="sidebar-nav">
           <button class="nav-dot" type="button" aria-label="Inventory view">INV</button>
           <button class="nav-dot" type="button" aria-label="Transfers view">TRF</button>
@@ -104,6 +105,58 @@
                 <span class="status-chip" role="cell">5 beds</span>
                 <span class="action-col" role="cell"><button class="critical-action" type="button">Escalate</button></span>
               </div>
+            </div>
+          </section>
+
+          <section class="audit-zone" aria-label="System audit logs">
+            <div class="audit-head">
+              <h2>System Audit Logs</h2>
+              <p>Recent high-priority platform actions across hospitals, users, and transfer workflows.</p>
+            </div>
+
+            <div class="audit-table-wrap">
+              <table class="audit-table">
+                <thead>
+                  <tr>
+                    <th scope="col">Timestamp</th>
+                    <th scope="col">Entity Type</th>
+                    <th scope="col">Action</th>
+                    <th scope="col">Actor</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td data-label="Timestamp"><time datetime="2026-04-13T09:21:00Z">13 Apr 2026, 09:21 UTC</time></td>
+                    <td data-label="Entity Type"><span class="audit-entity">Transfer</span></td>
+                    <td data-label="Action">Transfer escalated to regional command center</td>
+                    <td data-label="Actor">Gov. Official - R. Menon</td>
+                  </tr>
+                  <tr>
+                    <td data-label="Timestamp"><time datetime="2026-04-13T09:07:00Z">13 Apr 2026, 09:07 UTC</time></td>
+                    <td data-label="Entity Type"><span class="audit-entity">Hospital</span></td>
+                    <td data-label="Action">ICU capacity threshold exceeded (95%)</td>
+                    <td data-label="Actor">System Monitor</td>
+                  </tr>
+                  <tr>
+                    <td data-label="Timestamp"><time datetime="2026-04-13T08:52:00Z">13 Apr 2026, 08:52 UTC</time></td>
+                    <td data-label="Entity Type"><span class="audit-entity">Resource</span></td>
+                    <td data-label="Action">Ventilator inventory adjusted for Ward C</td>
+                    <td data-label="Actor">Hospital Admin - J. Patel</td>
+                  </tr>
+                  <tr>
+                    <td data-label="Timestamp"><time datetime="2026-04-13T08:31:00Z">13 Apr 2026, 08:31 UTC</time></td>
+                    <td data-label="Entity Type"><span class="audit-entity">User</span></td>
+                    <td data-label="Action">Role permission updated for logistics operator</td>
+                    <td data-label="Actor">Security Controller</td>
+                  </tr>
+                  <tr>
+                    <td data-label="Timestamp"><time datetime="2026-04-13T08:16:00Z">13 Apr 2026, 08:16 UTC</time></td>
+                    <td data-label="Entity Type"><span class="audit-entity">Transfer</span></td>
+                    <td data-label="Action">Ambulance dispatch marked in transit</td>
+                    <td data-label="Actor">Dispatch Desk - A. Singh</td>
+                  </tr>
+                </tbody>
+              </table>
             </div>
           </section>
         </section>

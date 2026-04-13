@@ -10,9 +10,14 @@
       href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
       rel="stylesheet"
     />
+    <link rel="icon" type="image/png" href="Gemini_Generated_Image_nmgr3pnmgr3pnmgr.png" />
     <link rel="stylesheet" href="style.css" />
   </head>
   <body>
+    <div id="global-loader">
+      <img src="Gemini_Generated_Image_nmgr3pnmgr3pnmgr.png" alt="Loading HOLOID..." class="loader-logo" />
+    </div>
+
     <main class="auth-layout" id="auth-view">
       <section class="visual-panel" aria-hidden="true">
         <div class="network">
@@ -44,6 +49,7 @@
       <section class="auth-panel">
         <div class="auth-shell">
           <header class="auth-header">
+            <img src="Gemini_Generated_Image_nmgr3pnmgr3pnmgr.png" alt="HOLOID Logo" class="auth-logo" />
             <h2>Secure Access Portal</h2>
             <p>Sign in or create an account to continue.</p>
           </header>
@@ -78,11 +84,20 @@
               </div>
               <div class="field">
                 <input id="register-email" type="email" placeholder=" " required />
-                <label for="register-email">Work Email</label>
+                <label for="register-email">Email</label>
               </div>
               <div class="field">
                 <input id="register-password" type="password" placeholder=" " required />
                 <label for="register-password">Create Password</label>
+              </div>
+              <div class="select-wrap">
+                <label for="register-role">User Role</label>
+                <select id="register-role" class="dashboard-select" required>
+                  <option value="" selected disabled>Select User Role</option>
+                  <option value="HOSPITAL_ADMIN">Hospital Admin</option>
+                  <option value="DOCTOR">Doctor</option>
+                  <option value="GOVERNMENT_OFFICIAL">Government Official</option>
+                </select>
               </div>
               <button class="btn-secondary" type="submit">Create Account</button>
               <p class="toggle-text">Already have an account? <span id="show-login">Sign in</span></p>
@@ -96,13 +111,49 @@
 
     <div class="dashboard-layout app-shell" id="app-shell">
       <aside class="dashboard-sidebar" aria-label="Primary navigation">
-        <div class="brand-mark">HD</div>
+        <img src="Gemini_Generated_Image_nmgr3pnmgr3pnmgr.png" alt="HOLOID Logo" class="brand-logo" />
         <nav class="sidebar-nav">
-          <button class="nav-dot active" type="button" aria-label="Inventory view" data-view="inventory">INV</button>
-          <button class="nav-dot" type="button" aria-label="Transfers view" data-view="logistics">TRF</button>
-          <button class="nav-dot" type="button" aria-label="Command center view" data-view="command">CMD</button>
+          <button class="sidebar-link active" type="button" data-view="inventory" aria-label="Resource Inventory">
+            <span class="sidebar-link-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="3.5" y="4" width="17" height="16" rx="2"></rect>
+                <path d="M8 9h8M8 13h8M8 17h5"></path>
+              </svg>
+            </span>
+            <span class="sidebar-link-label">Resource Inventory</span>
+          </button>
+          <button class="sidebar-link" type="button" data-view="logistics" aria-label="Logistics and Transfer">
+            <span class="sidebar-link-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M3 7h10"></path>
+                <path d="M3 12h14"></path>
+                <path d="M3 17h10"></path>
+                <circle cx="18" cy="12" r="3"></circle>
+              </svg>
+            </span>
+            <span class="sidebar-link-label">Logistics &amp; Transfer</span>
+          </button>
+          <button class="sidebar-link" type="button" data-view="command" aria-label="Command Center">
+            <span class="sidebar-link-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M4 18h16"></path>
+                <path d="M7 18V8"></path>
+                <path d="M12 18V5"></path>
+                <path d="M17 18v-6"></path>
+              </svg>
+            </span>
+            <span class="sidebar-link-label">Command Center</span>
+          </button>
+          <button class="sidebar-link" id="settings-nav-btn" type="button" aria-label="Settings">
+            <span class="sidebar-link-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="3.25"></circle>
+                <path d="M19.3 15a1 1 0 0 0 .2 1.1l.1.1a1 1 0 0 1 0 1.4l-.9.9a1 1 0 0 1-1.4 0l-.1-.1a1 1 0 0 0-1.1-.2 1 1 0 0 0-.6.9V20a1 1 0 0 1-1 1h-1.2a1 1 0 0 1-1-1v-.2a1 1 0 0 0-.6-.9 1 1 0 0 0-1.1.2l-.1.1a1 1 0 0 1-1.4 0l-.9-.9a1 1 0 0 1 0-1.4l.1-.1a1 1 0 0 0 .2-1.1 1 1 0 0 0-.9-.6H4a1 1 0 0 1-1-1v-1.2a1 1 0 0 1 1-1h.2a1 1 0 0 0 .9-.6 1 1 0 0 0-.2-1.1l-.1-.1a1 1 0 0 1 0-1.4l.9-.9a1 1 0 0 1 1.4 0l.1.1a1 1 0 0 0 1.1.2 1 1 0 0 0 .6-.9V4a1 1 0 0 1 1-1h1.2a1 1 0 0 1 1 1v.2a1 1 0 0 0 .6.9 1 1 0 0 0 1.1-.2l.1-.1a1 1 0 0 1 1.4 0l.9.9a1 1 0 0 1 0 1.4l-.1.1a1 1 0 0 0-.2 1.1 1 1 0 0 0 .9.6h.2a1 1 0 0 1 1 1v1.2a1 1 0 0 1-1 1h-.2a1 1 0 0 0-.9.6z"></path>
+              </svg>
+            </span>
+            <span class="sidebar-link-label">Settings</span>
+          </button>
         </nav>
-        <button class="nav-dot" id="cycle-view-btn" type="button" aria-label="Cycle active view">SET</button>
       </aside>
 
       <header class="dashboard-header">
@@ -429,6 +480,15 @@
     </div>
 
     <script>
+      window.addEventListener("load", function () {
+        var globalLoader = document.getElementById("global-loader");
+        window.setTimeout(function () {
+          if (globalLoader) {
+            globalLoader.classList.add("fade-out");
+          }
+        }, 2000);
+      });
+
       (function () {
         var authView = document.getElementById("auth-view");
         var appShell = document.getElementById("app-shell");
@@ -438,10 +498,9 @@
         var showLogin = document.getElementById("show-login");
         var headerTitle = document.getElementById("header-title");
         var logoutBtn = document.getElementById("logout-btn");
-        var navButtons = Array.prototype.slice.call(document.querySelectorAll(".nav-dot[data-view]"));
+        var navButtons = Array.prototype.slice.call(document.querySelectorAll(".sidebar-link[data-view]"));
         var views = Array.prototype.slice.call(document.querySelectorAll(".app-view"));
-        var cycleViewBtn = document.getElementById("cycle-view-btn");
-        var viewOrder = ["inventory", "logistics", "command"];
+        var settingsNavBtn = document.getElementById("settings-nav-btn");
         var viewTitles = {
           inventory: "Resource Inventory",
           logistics: "Logistics & Transfer",
@@ -490,6 +549,56 @@
           }
         }
 
+        function escapeHtml(value) {
+          return String(value).replace(/[&<>"']/g, function (character) {
+            var characterMap = {
+              "&": "&amp;",
+              "<": "&lt;",
+              ">": "&gt;",
+              '"': "&quot;",
+              "'": "&#39;"
+            };
+            return characterMap[character] || character;
+          });
+        }
+
+        function simulateRegistrationApi(payload) {
+          return new Promise(function (resolve) {
+            window.setTimeout(function () {
+              resolve({
+                status: "PENDING_EMAIL_ACTIVATION",
+                email: payload.email,
+                role: payload.role
+              });
+            }, 900);
+          });
+        }
+
+        function renderPendingActivation(details) {
+          var roleLabels = {
+            HOSPITAL_ADMIN: "Hospital Admin",
+            DOCTOR: "Doctor",
+            GOVERNMENT_OFFICIAL: "Government Official"
+          };
+          var safeEmail = escapeHtml(details.email || "");
+          var safeRoleLabel = escapeHtml(roleLabels[details.role] || details.role || "User");
+
+          registerContainer.innerHTML =
+            '<section class="form-block" id="pending-activation-view" aria-live="polite">' +
+            "<h3>Pending Email Activation</h3>" +
+            "<p class=\"toggle-text\">Your " + safeRoleLabel + " account has been created.</p>" +
+            "<p class=\"toggle-text\">Check <strong>" + safeEmail + "</strong> for your activation token and verify your email before signing in.</p>" +
+            '<button class="btn-secondary" id="pending-back-login" type="button">Back to Sign In</button>' +
+            "</section>";
+
+          var pendingBackLoginButton = document.getElementById("pending-back-login");
+          if (pendingBackLoginButton) {
+            pendingBackLoginButton.addEventListener("click", function () {
+              showAuthContainer(loginContainer, registerContainer);
+            });
+          }
+        }
+
         function exitApp() {
           appShell.classList.remove("is-active");
           authView.classList.remove("is-hidden");
@@ -517,7 +626,33 @@
 
         document.getElementById("register-form").addEventListener("submit", function (event) {
           event.preventDefault();
-          enterApp("inventory");
+
+          var form = event.currentTarget;
+          var submitButton = form.querySelector("button[type='submit']");
+          var payload = {
+            name: document.getElementById("register-name").value.trim(),
+            email: document.getElementById("register-email").value.trim(),
+            password: document.getElementById("register-password").value,
+            role: document.getElementById("register-role").value
+          };
+
+          if (submitButton) {
+            submitButton.disabled = true;
+            submitButton.textContent = "Creating...";
+          }
+
+          simulateRegistrationApi(payload)
+            .then(function (response) {
+              if (response.status === "PENDING_EMAIL_ACTIVATION") {
+                renderPendingActivation(response);
+              }
+            })
+            .catch(function () {
+              if (submitButton) {
+                submitButton.disabled = false;
+                submitButton.textContent = "Create Account";
+              }
+            });
         });
 
         navButtons.forEach(function (button) {
@@ -526,36 +661,128 @@
           });
         });
 
-        cycleViewBtn.addEventListener("click", function () {
-          var current = navButtons.find(function (button) {
-            return button.classList.contains("active");
+        if (settingsNavBtn) {
+          settingsNavBtn.addEventListener("click", function () {
+            showToast("Settings panel coming soon.", "success");
           });
-          var currentView = current ? current.getAttribute("data-view") : "inventory";
-          var nextIndex = (viewOrder.indexOf(currentView) + 1) % viewOrder.length;
-          setActiveView(viewOrder[nextIndex]);
-        });
+        }
 
         logoutBtn.addEventListener("click", function () {
           exitApp();
         });
 
-        var states = ["vacant", "maintenance", "critical"];
+        function parseBedCount(value) {
+          var parsed = Number(String(value || "").trim());
+          return Number.isFinite(parsed) ? parsed : 0;
+        }
+
+        function resolveBedStatus(row) {
+          var dot = row.querySelector(".status-dot");
+          if (!dot) {
+            return "Vacant";
+          }
+          if (dot.classList.contains("maintenance")) {
+            return "Maintenance";
+          }
+          if (dot.classList.contains("critical")) {
+            return "Occupied";
+          }
+          return "Vacant";
+        }
+
+        function showToast(message, kind) {
+          var existing = document.getElementById("inventory-toast");
+          if (existing) {
+            existing.remove();
+          }
+
+          var toast = document.createElement("div");
+          toast.id = "inventory-toast";
+          toast.textContent = message;
+          toast.style.position = "fixed";
+          toast.style.right = "20px";
+          toast.style.bottom = "20px";
+          toast.style.zIndex = "10000";
+          toast.style.padding = "10px 14px";
+          toast.style.borderRadius = "10px";
+          toast.style.border = "1px solid";
+          toast.style.fontSize = "0.84rem";
+          toast.style.background = kind === "success" ? "rgba(38, 64, 39, 0.95)" : "rgba(105, 35, 35, 0.95)";
+          toast.style.color = "#f4f0e5";
+          toast.style.borderColor = kind === "success" ? "rgba(179, 138, 88, 0.8)" : "rgba(179, 138, 88, 0.55)";
+          toast.style.boxShadow = "0 14px 28px rgba(13, 31, 34, 0.42)";
+          document.body.appendChild(toast);
+
+          window.setTimeout(function () {
+            toast.remove();
+          }, 2400);
+        }
+
         Array.prototype.slice.call(document.querySelectorAll(".icon-action")).forEach(function (button) {
-          button.addEventListener("click", function () {
+          button.addEventListener("click", async function () {
             var row = button.closest(".bed-row");
-            if (!row) {
+            var wardCard = button.closest(".ward-card");
+            if (!row || !wardCard) {
               return;
             }
-            var dot = row.querySelector(".status-dot");
-            if (!dot) {
+
+            var bedType = "";
+            var bedKey = row.querySelector(".bed-key");
+            if (bedKey) {
+              bedType = bedKey.textContent.trim();
+            }
+
+            var countNode = row.querySelector(".bed-count");
+            var currentCount = parseBedCount(countNode ? countNode.textContent : "0");
+            var nextCountRaw = window.prompt("Adjust " + bedType + " count", String(currentCount));
+
+            if (nextCountRaw === null) {
               return;
             }
-            var currentIndex = states.findIndex(function (state) {
-              return dot.classList.contains(state);
-            });
-            var nextState = states[(currentIndex + 1) % states.length];
-            dot.classList.remove("vacant", "maintenance", "critical");
-            dot.classList.add(nextState);
+
+            var nextCount = parseBedCount(nextCountRaw);
+            if (String(nextCount) !== String(nextCountRaw).trim() || nextCount < 0) {
+              showToast("Enter a valid non-negative number.", "error");
+              return;
+            }
+
+            var wardHeading = wardCard.querySelector("h2");
+            var wardName = wardHeading ? wardHeading.textContent.split("-")[0].trim() : "";
+            var payload = {
+              bedType: bedType,
+              wardName: wardName,
+              count: nextCount,
+              status: resolveBedStatus(row)
+            };
+
+            button.disabled = true;
+            button.setAttribute("aria-busy", "true");
+
+            try {
+              var response = await fetch("/api/v1/resources/update-bed", {
+                method: "PATCH",
+                headers: {
+                  "Content-Type": "application/json"
+                },
+                body: JSON.stringify(payload)
+              });
+
+              var result = await response.json();
+              if (!response.ok) {
+                throw new Error((result && result.message) || "Failed to update bed count");
+              }
+
+              if (countNode) {
+                countNode.textContent = String(nextCount);
+              }
+
+              showToast(bedType + " updated to " + nextCount + " beds.", "success");
+            } catch (error) {
+              showToast((error && error.message) || "Unable to update bed count.", "error");
+            } finally {
+              button.disabled = false;
+              button.removeAttribute("aria-busy");
+            }
           });
         });
 
