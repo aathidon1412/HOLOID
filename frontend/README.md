@@ -1,3 +1,3 @@
-# Welcome to your Lovable project
+# HOLOID Frontend
 
-TODO: Document your project here
+Frontend for the HOLOID project.
