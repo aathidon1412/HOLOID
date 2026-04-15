@@ -25,7 +25,9 @@ const startServer = async () => {
     const tokenService = require("./services/tokenService");
 
     // Mount routes that need access to `io`
-    app.use("/api/resources", createResourceRouter(io));
+    const resourceRouter = createResourceRouter(io);
+    app.use("/api/v1/resources", resourceRouter);
+    app.use("/api/resources", resourceRouter); // backward-compatible alias
 
     // Socket handlers
     io.use((socket, next) => {

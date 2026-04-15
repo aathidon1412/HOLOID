@@ -2,6 +2,7 @@ const nodemailer = require("nodemailer");
 
 const createTransporter = () => {
 	const { SMTP_HOST, SMTP_PORT, SMTP_USERNAME, SMTP_PASSWORD } = process.env;
+	const allowSelfSigned = String(process.env.SMTP_ALLOW_SELF_SIGNED || "").toLowerCase() === "true";
 
 	if (!SMTP_HOST || !SMTP_PORT || !SMTP_USERNAME || !SMTP_PASSWORD) {
 		return null;
@@ -15,6 +16,7 @@ const createTransporter = () => {
 			user: SMTP_USERNAME,
 			pass: SMTP_PASSWORD,
 		},
+		tls: allowSelfSigned ? { rejectUnauthorized: false } : undefined,
 	});
 };
 
@@ -22,24 +24,29 @@ const sendActivationEmail = async ({ to, name, activationLink }) => {
 	const transporter = createTransporter();
 
 	if (!transporter) {
-		console.log(`Activation link for ${to}: ${activationLink}`);
-		return;
+		console.log(`Activation email skipped for ${to}: SMTP is not configured.`);
+		return { skipped: true };
 	}
 
-	await transporter.sendMail({
-		from: process.env.EMAIL_FROM || process.env.SMTP_USERNAME,
-		to,
-		subject: "Activate your HOLOID account",
-		text: `Hi ${name},\n\nUse this link to activate your account:\n${activationLink}\n\nThis link expires soon.`,
-		html: `
-			<p>Hi ${name},</p>
-			<p>Use the link below to activate your HOLOID account:</p>
-			<p><a href="${activationLink}">${activationLink}</a></p>
-			<p>This link expires soon.</p>
-		`,
-	});
-
-	return { skipped: false };
+	try {
+		await transporter.sendMail({
+			from: process.env.EMAIL_FROM || process.env.SMTP_USERNAME,
+			to,
+			subject: "Activate your HOLOID account",
+			text: `Hi ${name},\n\nUse this link to activate your account:\n${activationLink}\n\nThis link expires soon.`,
+			html: `
+				<p>Hi ${name},</p>
+				<p>Use the link below to activate your HOLOID account:</p>
+				<p><a href="${activationLink}">${activationLink}</a></p>
+				<p>This link expires soon.</p>
+			`,
+		});
+		return { skipped: false };
+	} catch (err) {
+		console.log(`Activation email failed for ${to}.`);
+		console.log(err && err.message ? err.message : err);
+		return { skipped: true, error: err && err.message ? err.message : String(err) };
+	}
 };
 
 const sendAccountActivationEmail = async ({ to, accountName, activationLink }) =>

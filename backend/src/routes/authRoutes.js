@@ -19,7 +19,7 @@ router.post(
     "/register",
     validate([
         body("name").isString().trim().notEmpty(),
-        body("email").isEmail().normalizeEmail(),
+        body("email").isEmail(),
         body("password").isLength({ min: 8 }),
         body("role").isString().notEmpty(),
     ]),

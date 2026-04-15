@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth, UserRole } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Eye, EyeOff } from "lucide-react";
 import holoidLogo from "@/assets/holoid_logo.png";
+import { ApiClientError } from "@/lib/api";
 
 const ROLE_ROUTES: Record<UserRole, string> = {
   HOSPITAL_ADMIN: "/admin/inventory",
@@ -20,24 +21,97 @@ const LoginPage = () => {
   const [showPassword, setShowPassword] = useState(false);
   const [name, setName] = useState("");
   const [role, setRole] = useState<UserRole>("DOCTOR");
-  const [hospital, setHospital] = useState("");
+  const [hospitalId, setHospitalId] = useState("");
   const { login, register } = useAuth();
   const navigate = useNavigate();
 
-  const handleSignIn = (e: React.FormEvent) => {
+  const [isWorking, setIsWorking] = useState(false);
+  const [error, setError] = useState<string>("");
+  const [postRegisterMessage, setPostRegisterMessage] = useState<string>("");
+  const [hospitals, setHospitals] = useState<Array<{ id: string; name: string }>>([]);
+
+  const roleRoute = useMemo(() => ROLE_ROUTES[role], [role]);
+
+  const handleSignIn = async (e: React.FormEvent) => {
     e.preventDefault();
-    login(email, password);
-    // For demo: route based on email
-    if (email.includes("gov")) navigate("/gov/command-center");
-    else if (email.includes("doctor")) navigate("/doctor/overview");
-    else navigate("/admin/inventory");
+    setIsWorking(true);
+    setError("");
+    try {
+      const user = await login(email, password);
+      navigate(ROLE_ROUTES[user.role]);
+    } catch (e) {
+      const msg = e instanceof ApiClientError ? e.message : "Login failed.";
+      setError(msg);
+    } finally {
+      setIsWorking(false);
+    }
   };
 
-  const handleRegister = (e: React.FormEvent) => {
+  const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
-    register({ name, email, password, role, hospital });
-    navigate(ROLE_ROUTES[role]);
+    setIsWorking(true);
+    setError("");
+    setPostRegisterMessage("");
+    try {
+      // Validate hospital selection for roles that require it
+      if ((role === "HOSPITAL_ADMIN" || role === "DOCTOR") && !hospitalId.trim()) {
+        setError("Please select a hospital");
+        setIsWorking(false);
+        return;
+      }
+
+      const result = await register({
+        name,
+        email,
+        password,
+        role,
+        hospitalId: hospitalId.trim() ? hospitalId.trim() : null,
+      });
+
+      setMode("signin");
+      setPassword("");
+
+      if (result.pendingApproval) {
+        setPostRegisterMessage("Account created and is pending approval. You will receive an activation email after approval.");
+      } else if (result.activationEmailSent) {
+        setPostRegisterMessage("Account created. Please check your email for the activation link.");
+      } else {
+        setPostRegisterMessage("Account created. Activation email was skipped (mailer not configured).");
+      }
+    } catch (e) {
+      const msg = e instanceof ApiClientError ? e.message : "Registration failed.";
+      setError(msg);
+    } finally {
+      setIsWorking(false);
+    }
   };
+
+  // Fetch hospitals for dropdown when role requires them
+  useMemo(() => {
+    const needsHospital = role === "HOSPITAL_ADMIN" || role === "DOCTOR";
+    if (!needsHospital) {
+      setHospitals([]);
+      return;
+    }
+
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await (await import("@/lib/api")).apiRequest<any>(`/hospitals/list`);
+        if (!cancelled && res && res.data && Array.isArray(res.data.hospitals)) {
+          setHospitals(
+            res.data.hospitals.map((h: any) => ({ id: h._id || h.id, name: h.name || h._id || h.id }))
+          );
+        }
+      } catch (e) {
+        // ignore — keep hospitals empty so user can paste an id
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [role]);
 
   return (
     <div className="flex min-h-screen">
@@ -93,15 +167,15 @@ const LoginPage = () => {
             </p>
           </div>
 
-          {/* Quick Login Buttons (Demo) */}
-          <div className="rounded-lg border border-border bg-card p-3 space-y-2 shadow-sm">
-            <p className="text-muted-foreground text-[10px] text-center uppercase tracking-widest font-bold">Quick Demo Entry</p>
-            <div className="flex gap-2">
-              <Button variant="outline" size="sm" onClick={() => { setEmail("admin@hospital.com"); }} className="flex-1 h-8 text-xs font-semibold hover:bg-primary/10 hover:text-primary transition-all">Admin</Button>
-              <Button variant="outline" size="sm" onClick={() => { setEmail("doctor@hospital.com"); }} className="flex-1 h-8 text-xs font-semibold hover:bg-primary/10 hover:text-primary transition-all">Doctor</Button>
-              <Button variant="outline" size="sm" onClick={() => { setEmail("gov@health.gov"); }} className="flex-1 h-8 text-xs font-semibold hover:bg-primary/10 hover:text-primary transition-all">Gov</Button>
+          {(error || postRegisterMessage) && (
+            <div
+              className={`rounded-lg border p-3 text-sm ${
+                error ? "border-destructive/40 text-destructive" : "border-border text-foreground"
+              }`}
+            >
+              {error || postRegisterMessage}
             </div>
-          </div>
+          )}
 
           {mode === "signin" ? (
             <form onSubmit={handleSignIn} className="space-y-4">
@@ -118,7 +192,9 @@ const LoginPage = () => {
                   </button>
                 </div>
               </div>
-              <Button type="submit" className="w-full">Sign In</Button>
+              <Button type="submit" className="w-full" disabled={isWorking}>
+                {isWorking ? "Signing in..." : "Sign In"}
+              </Button>
               <p className="text-center text-sm text-muted-foreground">
                 New here?{" "}
                 <button type="button" onClick={() => setMode("register")} className="text-primary hover:underline">
@@ -150,11 +226,38 @@ const LoginPage = () => {
               </div>
               {role !== "GOVERNMENT_OFFICIAL" && (
                 <div className="space-y-2">
-                  <Label htmlFor="hospital">Hospital</Label>
-                  <Input id="hospital" placeholder="Search or select hospital" value={hospital} onChange={(e) => setHospital(e.target.value)} className="bg-secondary border-border" />
+                  <Label htmlFor="hospitalId">Hospital</Label>
+                  {hospitals.length > 0 ? (
+                    <select
+                      id="hospitalId"
+                      value={hospitalId}
+                      onChange={(e) => setHospitalId(e.target.value)}
+                      className="w-full rounded-md border border-border bg-secondary px-3 py-2 text-sm text-foreground"
+                    >
+                      <option value="">Select hospital (required for Hospital Admin / Doctor)</option>
+                      {hospitals.map((h) => (
+                        <option key={h.id} value={h.id}>
+                          {h.name}
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    <Input
+                      id="hospitalId"
+                      placeholder="MongoDB hospitalId or leave blank"
+                      value={hospitalId}
+                      onChange={(e) => setHospitalId(e.target.value)}
+                      className="bg-secondary border-border"
+                    />
+                  )}
                 </div>
               )}
-              <Button type="submit" className="w-full">Create Account</Button>
+              <Button type="submit" className="w-full" disabled={isWorking}>
+                {isWorking ? "Creating..." : "Create Account"}
+              </Button>
+              <p className="text-center text-xs text-muted-foreground">
+                After registering, you must activate your account via the email link before you can sign in.
+              </p>
               <p className="text-center text-sm text-muted-foreground">
                 Already registered?{" "}
                 <button type="button" onClick={() => setMode("signin")} className="text-primary hover:underline">

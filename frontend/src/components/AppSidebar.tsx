@@ -18,6 +18,7 @@ const adminLinks: SidebarLink[] = [
   { to: "/admin/transfers", icon: <ArrowLeftRight size={18} />, label: "Transfers & Ambulance" },
   { to: "/admin/alerts", icon: <Bell size={18} />, label: "Alerts & Notifications" },
   { to: "/admin/analytics", icon: <BarChart3 size={18} />, label: "Analytics" },
+  { to: "/admin/users", icon: <Users size={18} />, label: "User Management" },
   { to: "/admin/settings", icon: <Settings size={18} />, label: "Settings" },
 ];
 

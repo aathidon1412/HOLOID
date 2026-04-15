@@ -1,5 +1,7 @@
 const mongoose = require("mongoose");
 const Resource = require("../models/Resource");
+const ApiResponse = require("../utils/ApiResponse");
+const ApiError = require("../utils/ApiError");
 
 const BED_TYPES = ["ICU", "General", "Ventilator", "Oxygen-supported"];
 const BED_STATUS = ["Occupied", "Vacant", "Maintenance"];
@@ -67,7 +69,7 @@ const createInventory = async (req, res) => {
         }
 
         const resource = await Resource.create(payload);
-        return res.status(201).json(resource);
+        return res.status(201).json(new ApiResponse(201, resource, "Inventory created successfully"));
     } catch (error) {
         if (error.name === "ValidationError" || error.name === "CastError") {
             return res.status(400).json({ message: error.message });
@@ -115,7 +117,7 @@ const updateInventory = async (req, res) => {
             });
         }
 
-        return res.status(200).json(updatedInventory);
+        return res.status(200).json(new ApiResponse(200, updatedInventory, "Inventory updated successfully"));
     } catch (error) {
         if (error.name === "ValidationError" || error.name === "CastError") {
             return res.status(400).json({ message: error.message });
@@ -199,7 +201,7 @@ const updateBedStatus = (io) => async (req, res) => {
             }
         }
 
-        return res.status(200).json(updatedResource);
+        return res.status(200).json(new ApiResponse(200, updatedResource, "Bed status updated successfully"));
     } catch (error) {
         if (error.name === "ValidationError" || error.name === "CastError") {
             return res.status(400).json({ message: error.message });
@@ -229,7 +231,7 @@ const getResources = async (req, res) => {
         }
 
         const resources = await Resource.find(filter).populate("hospital");
-        return res.status(200).json(resources);
+        return res.status(200).json(new ApiResponse(200, resources, "Resources fetched successfully"));
     } catch (error) {
         return res.status(500).json({ message: "Failed to fetch resources" });
     }
