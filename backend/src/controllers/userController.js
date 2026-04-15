@@ -76,7 +76,68 @@ const listPendingUsers = catchAsync(async (req, res) => {
     return res.status(200).json(new ApiResponse(200, { users }, "OK"));
 });
 
+const listAllUsers = catchAsync(async (req, res) => {
+    const requester = req.user;
+
+    let filter = {};
+
+    if (requester.role === ROLES.GOVERNMENT_OFFICIAL) {
+        // GOV sees everyone, except other Government Officials
+        filter = { role: { $ne: ROLES.GOVERNMENT_OFFICIAL } }; 
+    } else if (requester.role === ROLES.HOSPITAL_ADMIN) {
+        // Hospital admin sees only doctors attached to their hospital
+        if (!requester.hospital) {
+            return res.status(200).json(new ApiResponse(200, { users: [] }, "OK"));
+        }
+        filter.hospital = requester.hospital;
+        filter.role = ROLES.DOCTOR;
+    } else {
+        throw new ApiError(403, "Insufficient permissions to list all users", "FORBIDDEN");
+    }
+
+    const users = await User.find(filter)
+        .populate("hospital", "name")
+        .select("_id name email role isApproved isActive lastLoginAt createdAt")
+        .lean();
+        
+        
+    return res.status(200).json(new ApiResponse(200, { users }, "OK"));
+});
+
+const toggleUserStatus = catchAsync(async (req, res) => {
+    const requester = req.user;
+    const userId = req.params.id;
+    const { isActive } = req.body;
+
+    if (isActive === undefined) {
+        throw new ApiError(400, "isActive status must be provided");
+    }
+
+    const user = await User.findById(userId);
+    if (!user) throw new ApiError(404, "User not found");
+
+    if (requester.role === ROLES.GOVERNMENT_OFFICIAL && user.role === ROLES.GOVERNMENT_OFFICIAL) {
+         throw new ApiError(403, "Cannot modify other Government Officials");
+    }
+
+    if (requester.role === ROLES.HOSPITAL_ADMIN) {
+        if (!requester.hospital || !user.hospital || requester.hospital.toString() !== user.hospital.toString()) {
+            throw new ApiError(403, "Cannot modify users from another hospital");
+        }
+        if (user.role !== ROLES.DOCTOR) {
+             throw new ApiError(403, "Hospital admins can only modify doctors");
+        }
+    }
+
+    user.isActive = isActive;
+    await user.save();
+
+    return res.status(200).json(new ApiResponse(200, { isActive: user.isActive }, `User ${isActive ? 'activated' : 'suspended'} successfully`));
+});
+
 module.exports = {
     approveUser,
     listPendingUsers,
+    listAllUsers,
+    toggleUserStatus,
 };
