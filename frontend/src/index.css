@@ -1,0 +1,110 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 214 18% 20%;
+    --foreground: 210 10% 90%;
+
+    --card: 214 20% 24%;
+    --card-foreground: 210 10% 90%;
+
+    --popover: 214 20% 24%;
+    --popover-foreground: 210 10% 90%;
+
+    --primary: 210 25% 60%;
+    --primary-foreground: 214 18% 15%;
+
+    --secondary: 214 18% 28%;
+    --secondary-foreground: 210 10% 85%;
+
+    --muted: 214 16% 26%;
+    --muted-foreground: 210 12% 68%;
+
+    --accent: 214 18% 30%;
+    --accent-foreground: 210 10% 90%;
+
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 210 40% 98%;
+
+    --border: 214 14% 30%;
+    --input: 214 14% 30%;
+    --ring: 210 25% 60%;
+
+    --radius: 0.5rem;
+
+    --status-vacant: 142 71% 45%;
+    --status-warning: 38 92% 50%;
+    --status-critical: 0 84% 60%;
+    --status-info: 210 25% 60%;
+
+    --sidebar-background: 214 21% 28%;
+    --sidebar-foreground: 210 12% 68%;
+    --sidebar-primary: 210 25% 60%;
+    --sidebar-primary-foreground: 214 18% 15%;
+    --sidebar-accent: 214 18% 34%;
+    --sidebar-accent-foreground: 210 10% 90%;
+    --sidebar-border: 214 14% 34%;
+    --sidebar-ring: 210 25% 60%;
+
+    --topbar: 214 21% 28%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  }
+}
+
+@layer utilities {
+  .status-vacant {
+    color: hsl(var(--status-vacant));
+  }
+  .status-warning {
+    color: hsl(var(--status-warning));
+  }
+  .status-critical {
+    color: hsl(var(--status-critical));
+  }
+  .status-info {
+    color: hsl(var(--status-info));
+  }
+  .bg-status-vacant {
+    background-color: hsl(var(--status-vacant));
+  }
+  .bg-status-warning {
+    background-color: hsl(var(--status-warning));
+  }
+  .bg-status-critical {
+    background-color: hsl(var(--status-critical));
+  }
+  .bg-status-info {
+    background-color: hsl(var(--status-info));
+  }
+  .pulse-live {
+    animation: pulse-dot 2s ease-in-out infinite;
+  }
+  @keyframes pulse-dot {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; }
+  }
+
+  /* Migrated from Spark UI */
+  .status-dot {
+    @apply inline-block w-2.5 h-2.5 rounded-full flex-shrink-0;
+  }
+  .status-dot-crit { @apply bg-status-critical; }
+  .status-dot-maint { @apply bg-status-warning; }
+  .status-dot-info { @apply bg-status-info; }
+  .status-dot-vacant { @apply bg-status-vacant; }
+
+  .progress-bar-track { @apply w-full h-1.5 bg-secondary rounded-full overflow-hidden; }
+  .progress-bar-fill { @apply h-full rounded-full transition-all duration-500; }
+}
