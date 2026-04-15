@@ -6,6 +6,8 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider } from "@/contexts/AuthContext";
 import DashboardLayout from "@/layouts/DashboardLayout";
 import LoginPage from "@/pages/LoginPage";
+import ActivateAccountPage from "@/pages/ActivateAccountPage";
+import RequireAuth from "@/components/RequireAuth";
 import AdminInventory from "@/pages/admin/AdminInventory";
 import AdminTransfers from "@/pages/admin/AdminTransfers";
 import AdminAlerts from "@/pages/admin/AdminAlerts";
@@ -38,35 +40,38 @@ const App = () => (
           <Routes>
             <Route path="/" element={<Navigate to="/login" replace />} />
             <Route path="/login" element={<LoginPage />} />
+            <Route path="/activate" element={<ActivateAccountPage />} />
 
-            {/* Hospital Admin Routes */}
-            <Route element={<DashboardLayout />}>
-              <Route path="/admin/inventory" element={<AdminInventory />} />
-              <Route path="/admin/transfers" element={<AdminTransfers />} />
-              <Route path="/admin/alerts" element={<AdminAlerts />} />
-              <Route path="/admin/analytics" element={<AdminAnalytics />} />
-              <Route path="/admin/settings" element={<AdminSettings />} />
-            </Route>
+            <Route element={<RequireAuth />}>
+              {/* Hospital Admin Routes */}
+              <Route element={<DashboardLayout />}>
+                <Route path="/admin/inventory" element={<AdminInventory />} />
+                <Route path="/admin/transfers" element={<AdminTransfers />} />
+                <Route path="/admin/alerts" element={<AdminAlerts />} />
+                <Route path="/admin/analytics" element={<AdminAnalytics />} />
+                <Route path="/admin/settings" element={<AdminSettings />} />
+              </Route>
 
-            {/* Doctor Routes */}
-            <Route element={<DashboardLayout />}>
-              <Route path="/doctor/overview" element={<DoctorOverview />} />
-              <Route path="/doctor/request-transfer" element={<DoctorRequestTransfer />} />
-              <Route path="/doctor/transfers" element={<DoctorTransfers />} />
-              <Route path="/doctor/history" element={<DoctorHistory />} />
-              <Route path="/doctor/settings" element={<DoctorSettings />} />
-            </Route>
+              {/* Doctor Routes */}
+              <Route element={<DashboardLayout />}>
+                <Route path="/doctor/overview" element={<DoctorOverview />} />
+                <Route path="/doctor/request-transfer" element={<DoctorRequestTransfer />} />
+                <Route path="/doctor/transfers" element={<DoctorTransfers />} />
+                <Route path="/doctor/history" element={<DoctorHistory />} />
+                <Route path="/doctor/settings" element={<DoctorSettings />} />
+              </Route>
 
-            {/* Government Official Routes */}
-            <Route element={<DashboardLayout />}>
-              <Route path="/gov/command-center" element={<GovCommandCenter />} />
-              <Route path="/gov/map" element={<GovMap />} />
-              <Route path="/gov/transfers" element={<GovTransfers />} />
-              <Route path="/gov/analytics" element={<GovAnalytics />} />
-              <Route path="/gov/audit-logs" element={<GovAuditLogs />} />
-              <Route path="/gov/hospitals" element={<GovHospitals />} />
-              <Route path="/gov/users" element={<GovUsers />} />
-              <Route path="/gov/settings" element={<GovSettings />} />
+              {/* Government Official Routes */}
+              <Route element={<DashboardLayout />}>
+                <Route path="/gov/command-center" element={<GovCommandCenter />} />
+                <Route path="/gov/map" element={<GovMap />} />
+                <Route path="/gov/transfers" element={<GovTransfers />} />
+                <Route path="/gov/analytics" element={<GovAnalytics />} />
+                <Route path="/gov/audit-logs" element={<GovAuditLogs />} />
+                <Route path="/gov/hospitals" element={<GovHospitals />} />
+                <Route path="/gov/users" element={<GovUsers />} />
+                <Route path="/gov/settings" element={<GovSettings />} />
+              </Route>
             </Route>
 
             <Route path="*" element={<NotFound />} />

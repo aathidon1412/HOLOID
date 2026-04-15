@@ -2,6 +2,7 @@ const request = require('supertest');
 const { expect } = require('chai');
 const { app } = require('./setup');
 const User = require('../src/models/User');
+const tokenService = require('../src/services/tokenService');
 
 describe('Auth integration tests', () => {
   const testUser = {
@@ -11,12 +12,11 @@ describe('Auth integration tests', () => {
     role: 'HOSPITAL_ADMIN',
   };
 
-  it('registers a user and returns activation link', async () => {
+  it('registers a user without exposing activation link', async () => {
     const res = await request(app).post('/api/v1/auth/register').send(testUser).expect(201);
     expect(res.body).to.have.property('data');
-    expect(res.body.data).to.have.property('activationLink');
-    const activationLink = res.body.data.activationLink;
-    expect(activationLink).to.be.a('string');
+    expect(res.body.data).to.not.have.property('activationLink');
+    expect(res.body.data).to.have.property('activationEmailSent');
     const created = await User.findOne({ email: testUser.email });
     expect(created).to.exist;
   });
@@ -27,9 +27,9 @@ describe('Auth integration tests', () => {
       .send({ name: 'User2', email: 'user2@test.local', password: 'password123', role: 'HOSPITAL_ADMIN' })
       .expect(201);
 
-    const activationLink = regResp.body.data.activationLink;
-    const url = new URL(activationLink);
-    const token = url.searchParams.get('token');
+    const createdUser = await User.findOne({ email: 'user2@test.local' });
+    expect(createdUser).to.exist;
+    const token = tokenService.generateActivationToken(createdUser);
 
     await request(app).get(`/api/v1/auth/activate?token=${token}`).expect(200);
 

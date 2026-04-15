@@ -1,4 +1,5 @@
 (async () => {
+  const jwt = require('jsonwebtoken');
   const base = process.env.BASE_URL || 'http://localhost:4000';
   const email = `socketsmoke+${Date.now()}@example.com`;
   const password = 'Password123!';
@@ -16,13 +17,20 @@
   const regJson = await regRes.json();
   console.log('Register:', regJson.message || regJson);
 
-  const activationLink = regJson.data && regJson.data.activationLink;
-  if (!activationLink) {
-    console.error('No activation link returned; abort');
+  const user = regJson.data && regJson.data.user;
+  if (!user || !user.id || !user.email) {
+    console.error('No user payload in register response; abort');
     process.exit(1);
   }
 
-  const activationToken = new URL(activationLink).searchParams.get('token');
+  const activationSecret = process.env.JWT_ACTIVATION_SECRET || 'dev_activation_secret';
+  const activationExpiresIn = process.env.JWT_ACTIVATION_EXPIRES_IN || '30m';
+  const activationToken = jwt.sign(
+    { sub: user.id, email: user.email, tokenType: 'activation' },
+    activationSecret,
+    { expiresIn: activationExpiresIn }
+  );
+
   await fetch(`${base}/api/v1/auth/activate?token=${encodeURIComponent(activationToken)}`);
   console.log('Activated account');
 

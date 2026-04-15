@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth, UserRole } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Eye, EyeOff } from "lucide-react";
 import holoidLogo from "@/assets/holoid_logo.png";
+import { ApiClientError } from "@/lib/api";
 
 const ROLE_ROUTES: Record<UserRole, string> = {
   HOSPITAL_ADMIN: "/admin/inventory",
@@ -20,23 +21,54 @@ const LoginPage = () => {
   const [showPassword, setShowPassword] = useState(false);
   const [name, setName] = useState("");
   const [role, setRole] = useState<UserRole>("DOCTOR");
-  const [hospital, setHospital] = useState("");
+  const [hospitalId, setHospitalId] = useState("");
   const { login, register } = useAuth();
   const navigate = useNavigate();
 
-  const handleSignIn = (e: React.FormEvent) => {
+  const [isWorking, setIsWorking] = useState(false);
+  const [error, setError] = useState<string>("");
+  const [postRegisterMessage, setPostRegisterMessage] = useState<string>("");
+
+  const roleRoute = useMemo(() => ROLE_ROUTES[role], [role]);
+
+  const handleSignIn = async (e: React.FormEvent) => {
     e.preventDefault();
-    login(email, password);
-    // For demo: route based on email
-    if (email.includes("gov")) navigate("/gov/command-center");
-    else if (email.includes("doctor")) navigate("/doctor/overview");
-    else navigate("/admin/inventory");
+    setIsWorking(true);
+    setError("");
+    try {
+      const user = await login(email, password);
+      navigate(ROLE_ROUTES[user.role]);
+    } catch (e) {
+      const msg = e instanceof ApiClientError ? e.message : "Login failed.";
+      setError(msg);
+    } finally {
+      setIsWorking(false);
+    }
   };
 
-  const handleRegister = (e: React.FormEvent) => {
+  const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
-    register({ name, email, password, role, hospital });
-    navigate(ROLE_ROUTES[role]);
+    setIsWorking(true);
+    setError("");
+    setPostRegisterMessage("");
+    try {
+      await register({
+        name,
+        email,
+        password,
+        role,
+        hospitalId: hospitalId.trim() ? hospitalId.trim() : null,
+      });
+
+      setMode("signin");
+      setPassword("");
+      setPostRegisterMessage("Account created. Please check your email for the activation link.");
+    } catch (e) {
+      const msg = e instanceof ApiClientError ? e.message : "Registration failed.";
+      setError(msg);
+    } finally {
+      setIsWorking(false);
+    }
   };
 
   return (
@@ -93,6 +125,16 @@ const LoginPage = () => {
             </p>
           </div>
 
+          {(error || postRegisterMessage) && (
+            <div
+              className={`rounded-lg border p-3 text-sm ${
+                error ? "border-destructive/40 text-destructive" : "border-border text-foreground"
+              }`}
+            >
+              {error || postRegisterMessage}
+            </div>
+          )}
+
           {/* Quick Login Buttons (Demo) */}
           <div className="rounded-lg border border-border bg-card p-3 space-y-2 shadow-sm">
             <p className="text-muted-foreground text-[10px] text-center uppercase tracking-widest font-bold">Quick Demo Entry</p>
@@ -118,7 +160,9 @@ const LoginPage = () => {
                   </button>
                 </div>
               </div>
-              <Button type="submit" className="w-full">Sign In</Button>
+              <Button type="submit" className="w-full" disabled={isWorking}>
+                {isWorking ? "Signing in..." : "Sign In"}
+              </Button>
               <p className="text-center text-sm text-muted-foreground">
                 New here?{" "}
                 <button type="button" onClick={() => setMode("register")} className="text-primary hover:underline">
@@ -150,11 +194,22 @@ const LoginPage = () => {
               </div>
               {role !== "GOVERNMENT_OFFICIAL" && (
                 <div className="space-y-2">
-                  <Label htmlFor="hospital">Hospital</Label>
-                  <Input id="hospital" placeholder="Search or select hospital" value={hospital} onChange={(e) => setHospital(e.target.value)} className="bg-secondary border-border" />
+                  <Label htmlFor="hospitalId">Hospital ID (optional)</Label>
+                  <Input
+                    id="hospitalId"
+                    placeholder="MongoDB hospitalId"
+                    value={hospitalId}
+                    onChange={(e) => setHospitalId(e.target.value)}
+                    className="bg-secondary border-border"
+                  />
                 </div>
               )}
-              <Button type="submit" className="w-full">Create Account</Button>
+              <Button type="submit" className="w-full" disabled={isWorking}>
+                {isWorking ? "Creating..." : "Create Account"}
+              </Button>
+              <p className="text-center text-xs text-muted-foreground">
+                After registering, you must activate your account via the email link before you can sign in.
+              </p>
               <p className="text-center text-sm text-muted-foreground">
                 Already registered?{" "}
                 <button type="button" onClick={() => setMode("signin")} className="text-primary hover:underline">

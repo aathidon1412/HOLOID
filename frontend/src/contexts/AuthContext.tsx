@@ -1,4 +1,5 @@
-import React, { createContext, useContext, useState, ReactNode } from "react";
+import React, { createContext, useContext, useEffect, useMemo, useState, ReactNode } from "react";
+import { apiRequest, ApiClientError, setToken } from "@/lib/api";
 
 export type UserRole = "HOSPITAL_ADMIN" | "DOCTOR" | "GOVERNMENT_OFFICIAL";
 
@@ -12,41 +13,129 @@ export interface User {
 
 interface AuthContextType {
   user: User | null;
-  login: (email: string, password: string) => void;
-  register: (data: { name: string; email: string; password: string; role: UserRole; hospital?: string }) => void;
-  logout: () => void;
+  accessToken: string | null;
+  login: (email: string, password: string) => Promise<User>;
+  register: (data: { name: string; email: string; password: string; role: UserRole; hospitalId?: string | null }) => Promise<void>;
+  activate: (token: string) => Promise<void>;
+  logout: () => Promise<void>;
+  refreshSession: () => Promise<void>;
   isAuthenticated: boolean;
+  isLoading: boolean;
 }
 
 const AuthContext = createContext<AuthContextType | null>(null);
 
-const DEMO_USERS: Record<string, User> = {
-  "admin@hospital.com": { id: "1", name: "Dr. A. Rajesh", email: "admin@hospital.com", role: "HOSPITAL_ADMIN", hospital: "City General Hospital" },
-  "doctor@hospital.com": { id: "2", name: "Dr. S. Sharma", email: "doctor@hospital.com", role: "DOCTOR", hospital: "City General Hospital" },
-  "gov@health.gov": { id: "3", name: "R. Menon", email: "gov@health.gov", role: "GOVERNMENT_OFFICIAL" },
+type LoginResponse = { accessToken: string; user: User };
+type VerifyResponse = { user: User };
+type RegisterResponse = {
+  user: { id: string; name: string; email: string; role: UserRole; isActive: boolean };
+  activationEmailSent?: boolean;
 };
 
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [user, setUser] = useState<User | null>(null);
+  const [accessToken, setAccessToken] = useState<string | null>(() => localStorage.getItem("holoid_access_token"));
+  const [isLoading, setIsLoading] = useState(true);
 
-  const login = (email: string, _password: string) => {
-    const demoUser = DEMO_USERS[email];
-    if (demoUser) {
-      setUser(demoUser);
-    } else {
-      // Default to admin for demo
-      setUser({ id: "99", name: "Demo User", email, role: "HOSPITAL_ADMIN", hospital: "Demo Hospital" });
+  const refreshSession = async () => {
+    if (!accessToken) {
+      setUser(null);
+      return;
+    }
+    const res = await apiRequest<VerifyResponse>("/auth/verify", { auth: true });
+    setUser(res.data.user);
+  };
+
+  const login = async (email: string, password: string) => {
+    try {
+      const res = await apiRequest<LoginResponse>("/auth/login", {
+        method: "POST",
+        body: { email, password },
+      });
+
+      setAccessToken(res.data.accessToken);
+      setToken(res.data.accessToken);
+      setUser(res.data.user);
+      return res.data.user;
+    } catch (e) {
+      // Ensure stale tokens don't cause confusing UI
+      if (e instanceof ApiClientError && e.code === "UNAUTHENTICATED") {
+        setAccessToken(null);
+        setToken(null);
+        setUser(null);
+      }
+      throw e;
     }
   };
 
-  const register = (data: { name: string; email: string; role: UserRole; hospital?: string }) => {
-    setUser({ id: "100", name: data.name, email: data.email, role: data.role, hospital: data.hospital });
+  const register = async (data: { name: string; email: string; password: string; role: UserRole; hospitalId?: string | null }) => {
+    await apiRequest<RegisterResponse>("/auth/register", {
+      method: "POST",
+      body: {
+        name: data.name,
+        email: data.email,
+        password: data.password,
+        role: data.role,
+        hospitalId: data.hospitalId || undefined,
+      },
+    });
   };
 
-  const logout = () => setUser(null);
+  const logout = async () => {
+    try {
+      await apiRequest<null>("/auth/logout", { method: "POST", auth: true });
+    } catch {
+      // Ignore network failures; clear local session anyway
+    } finally {
+      setAccessToken(null);
+      setToken(null);
+      setUser(null);
+    }
+  };
+
+  const activate = async (token: string) => {
+    await apiRequest<null>(`/auth/activate?token=${encodeURIComponent(token)}`);
+  };
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        if (accessToken) await refreshSession();
+      } catch {
+        // If token is invalid/expired, clear it
+        if (!cancelled) {
+          setAccessToken(null);
+          setToken(null);
+          setUser(null);
+        }
+      } finally {
+        if (!cancelled) setIsLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const value = useMemo(
+    () => ({
+      user,
+      accessToken,
+      login,
+      register,
+      activate,
+      logout,
+      refreshSession,
+      isAuthenticated: !!user && !!accessToken,
+      isLoading,
+    }),
+    [user, accessToken, isLoading]
+  );
 
   return (
-    <AuthContext.Provider value={{ user, login, register, logout, isAuthenticated: !!user }}>
+    <AuthContext.Provider value={value}>
       {children}
     </AuthContext.Provider>
   );

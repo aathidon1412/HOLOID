@@ -1,4 +1,5 @@
 (async () => {
+  const jwt = require('jsonwebtoken');
   const base = process.env.BASE_URL || 'http://localhost:4000';
   const email = `smoketest+${Date.now()}@example.com`;
   const password = 'Password123!';
@@ -12,16 +13,21 @@
   const regJson = await regRes.json();
   console.log('Register response:', regJson);
 
-  const activationLink = regJson.data && regJson.data.activationLink;
-  if (!activationLink) {
-    console.error('No activationLink in register response; aborting');
+  const user = regJson.data && regJson.data.user;
+  if (!user || !user.id || !user.email) {
+    console.error('No user payload in register response; aborting');
     process.exit(1);
   }
 
-  console.log('Calling activation link (backend API):', activationLink);
-  // activationLink points to client app. Extract token and call backend activation endpoint.
-  const url = new URL(activationLink);
-  const activationToken = url.searchParams.get('token');
+  const activationSecret = process.env.JWT_ACTIVATION_SECRET || 'dev_activation_secret';
+  const activationExpiresIn = process.env.JWT_ACTIVATION_EXPIRES_IN || '30m';
+  const activationToken = jwt.sign(
+    { sub: user.id, email: user.email, tokenType: 'activation' },
+    activationSecret,
+    { expiresIn: activationExpiresIn }
+  );
+
+  console.log('Calling activation endpoint with generated token');
   const actRes = await fetch(`${base}/api/v1/auth/activate?token=${encodeURIComponent(activationToken)}`, { method: 'GET' });
   console.log('Activation status:', actRes.status);
   console.log('Activation body:', await actRes.text());

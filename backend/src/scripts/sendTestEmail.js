@@ -12,6 +12,7 @@ async function main() {
   let usingEthereal = false;
 
   const { SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, SMTP_USERNAME, SMTP_PASSWORD, EMAIL_FROM } = process.env;
+  const allowSelfSigned = String(process.env.SMTP_ALLOW_SELF_SIGNED || '').toLowerCase() === 'true';
 
   const smtpUser = SMTP_USER || SMTP_USERNAME;
   const smtpPass = SMTP_PASS || SMTP_PASSWORD;
@@ -25,6 +26,7 @@ async function main() {
         user: smtpUser,
         pass: smtpPass,
       },
+      tls: allowSelfSigned ? { rejectUnauthorized: false } : undefined,
     });
     console.log('Using real SMTP transport:', SMTP_HOST);
   } else {

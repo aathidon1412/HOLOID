@@ -28,7 +28,7 @@ const register = catchAsync(async (req, res) => {
 	const clientUrl = process.env.CLIENT_URL || "http://localhost:5173";
 	const activationLink = `${clientUrl}/activate?token=${activationToken}`;
 
-	await sendActivationEmail({
+	const emailResult = await sendActivationEmail({
 		to: user.email,
 		name: user.name,
 		activationLink,
@@ -45,10 +45,9 @@ const register = catchAsync(async (req, res) => {
 					role: user.role,
 					isActive: user.isActive,
 				},
-				activationLink:
-					process.env.NODE_ENV !== "production" ? activationLink : undefined,
+				activationEmailSent: !emailResult.skipped,
 			},
-			"Registration successful. Please activate your account via email link."
+			"Registration successful. Please activate your account via the email link."
 		)
 	);
 });
