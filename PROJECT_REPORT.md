@@ -58,5 +58,8 @@ MongoDB stores core domain entities such as users, hospitals, resource inventori
 API Communication:
 The system follows REST-style API design with JSON request/response payloads between frontend and backend services. This enables clean module interaction for authentication, inventory updates, logistics operations, command-center analytics, and notifications.
 
+Authentication and Security:
+The platform implements JWT-based authentication, email account activation, and role-based access control to ensure that only authorized users can access protected workflows. Request validation, controlled middleware checks, and secure password handling support reliable protection of operational and user data.
+
 Version Control:
 Git is used for source tracking, branching, and collaborative development workflows, while GitHub serves as the remote repository platform for code management and project version history.
