@@ -1,3 +1,4 @@
+const mongoose = require("mongoose");
 const Hospital = require("../models/Hospital");
 const Transfer = require("../models/Transfer");
 const { normalizeBedType, ALLOWED_BED_TYPES } = require("../utils/bedType");
@@ -138,6 +139,7 @@ const requestPatientTransfer = async (req, res) => {
     requiredBedType,
     fromHospitalId,
     toHospitalId,
+    targetHospitalId,
     requestedBy,
     notificationEmails
   } = req.body;
@@ -159,9 +161,10 @@ const requestPatientTransfer = async (req, res) => {
   }
 
   let toHospital = null;
+  const destinationHospitalId = toHospitalId || targetHospitalId;
 
-  if (toHospitalId) {
-    toHospital = await Hospital.findById(toHospitalId);
+  if (destinationHospitalId) {
+    toHospital = await Hospital.findById(destinationHospitalId);
     if (!toHospital) {
       return res.status(404).json({ message: "toHospital not found" });
     }
@@ -288,10 +291,47 @@ const trackTransfer = async (req, res) => {
   return res.status(200).json({ transfer });
 };
 
+const getTransferHistory = async (req, res) => {
+  const { hospitalId, status } = req.query;
+  const filter = {};
+
+  if (hospitalId) {
+    if (!mongoose.Types.ObjectId.isValid(hospitalId)) {
+      return res.status(400).json({ message: "hospitalId must be a valid ObjectId" });
+    }
+
+    filter.$or = [{ fromHospital: hospitalId }, { toHospital: hospitalId }];
+  }
+
+  if (status) {
+    filter.status = String(status).trim().toLowerCase();
+  }
+
+  const transfers = await Transfer.find(filter)
+    .sort({ createdAt: -1 })
+    .populate("fromHospital", "name")
+    .populate("toHospital", "name")
+    .lean();
+
+  return res.status(200).json({ transfers });
+};
+
 const updateTransferStatus = async (req, res) => {
   const { status, note, actor } = req.body;
 
-  if (!["requested", "dispatched", "in_transit", "completed", "cancelled"].includes(status)) {
+  const normalizedStatus = String(status || "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, "_");
+
+  const statusAlias = {
+    accepted: "dispatched",
+    rejected: "cancelled"
+  };
+
+  const finalStatus = statusAlias[normalizedStatus] || normalizedStatus;
+
+  if (!["requested", "dispatched", "in_transit", "completed", "cancelled"].includes(finalStatus)) {
     return res.status(400).json({ message: "Invalid status" });
   }
 
@@ -303,10 +343,10 @@ const updateTransferStatus = async (req, res) => {
     return res.status(404).json({ message: "Transfer not found" });
   }
 
-  transfer.status = status;
-  transfer.timeline.push({ status, note: note || "" });
+  transfer.status = finalStatus;
+  transfer.timeline.push({ status: finalStatus, note: note || "" });
 
-  if (status === "completed") {
+  if (finalStatus === "completed") {
     const bedType = transfer.requiredBedType;
 
     if ((transfer.toHospital.resources?.[bedType] || 0) <= 0) {
@@ -343,7 +383,7 @@ const updateTransferStatus = async (req, res) => {
     entityId: transfer._id,
     action: "transfer_status_updated",
     actor: getRequester(actor),
-    metadata: { status, note: note || "" }
+    metadata: { status: finalStatus, note: note || "" }
   });
 
   const notificationEmails = req.body.notificationEmails;
@@ -351,7 +391,7 @@ const updateTransferStatus = async (req, res) => {
     await sendTransferEventEmail({
       to: notificationEmails.join(","),
       transferId: String(transfer._id),
-      status,
+      status: finalStatus,
       patientName: transfer.patientName,
       fromHospitalName: transfer.fromHospital.name,
       toHospitalName: transfer.toHospital.name,
@@ -433,6 +473,7 @@ module.exports = {
   searchHospitalsByResource,
   getNearestHospitalWithRequiredBed,
   requestPatientTransfer,
+  getTransferHistory,
   trackTransfer,
   updateTransferStatus,
   updateHospitalResources

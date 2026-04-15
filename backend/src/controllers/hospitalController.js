@@ -48,6 +48,14 @@ const listHospitals = catchAsync(async (req, res) => {
     return res.status(200).json(new ApiResponse(200, { hospitals }, "OK"));
 });
 
+const listHospitalsWithBedStatus = catchAsync(async (req, res) => {
+    const hospitals = await Hospital.find({ active: true })
+        .select("_id name region capacity resources location.city location.state")
+        .lean();
+
+    return res.status(200).json(new ApiResponse(200, { hospitals }, "OK"));
+});
+
 const getHospital = catchAsync(async (req, res) => {
     const id = req.params.id;
     const hospital = await Hospital.findById(id).lean();
@@ -110,6 +118,7 @@ const deleteHospital = catchAsync(async (req, res) => {
 module.exports = {
     createHospital,
     listHospitals,
+    listHospitalsWithBedStatus,
     getHospital,
     updateHospital,
     deleteHospital,

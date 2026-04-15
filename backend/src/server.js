@@ -65,6 +65,23 @@ const startServer = async () => {
             if (!hospitalId || typeof hospitalId !== "string") return;
             socket.leave(`hospital-${hospitalId}`);
         });
+
+        socket.on("transfer-requested", (payload = {}) => {
+            const targetHospitalId =
+                typeof payload.targetHospitalId === "string"
+                    ? payload.targetHospitalId
+                    : typeof payload.toHospitalId === "string"
+                    ? payload.toHospitalId
+                    : null;
+
+            if (!targetHospitalId) return;
+
+            io.to(`hospital-${targetHospitalId}`).emit("transfer-requested", {
+                ...payload,
+                targetHospitalId,
+                emittedAt: new Date().toISOString(),
+            });
+        });
     });
 
     // 404 + error handler (moved here so dynamic routes mounted above are reachable)

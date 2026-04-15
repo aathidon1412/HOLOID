@@ -1,9 +1,9 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Bed, Wind, HeartPulse, Droplets, Plus, Pencil, Loader2, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@/contexts/AuthContext";
-import { apiRequest } from "@/lib/api";
+import axiosInstance from "@/api/axiosInstance";
 
 import TopBar from "@/components/TopBar";
 import MetricCard from "@/components/MetricCard";
@@ -51,25 +51,35 @@ const AdminInventory = () => {
   const [newWardBeds, setNewWardBeds] = useState<{type: BedType, count: number}[]>([]);
   const [selectedNewBedType, setSelectedNewBedType] = useState<BedType>("ICU");
   const [selectedNewBedCount, setSelectedNewBedCount] = useState<number>(0);
+  const [wards, setWards] = useState<WardData[]>([]);
+  const [isCreatingWard, setIsCreatingWard] = useState(false);
 
   const { data: inventory, isLoading } = useQuery({
     queryKey: ["resources", user?.hospital],
     queryFn: async () => {
       if (!user?.hospital) throw new Error("No hospital assigned");
-      const res = await apiRequest<ResourceInventory[]>(`/resources?hospitalId=${user.hospital}`, { auth: true });
-      return res.data?.[0] || null;
+      const res = await axiosInstance.get("/resources", {
+        params: { hospitalId: user.hospital },
+      });
+
+      const resources: ResourceInventory[] =
+        res?.data?.data ||
+        res?.data?.resources ||
+        [];
+
+      return resources[0] || null;
     },
     enabled: !!user?.hospital,
   });
 
+  useEffect(() => {
+    setWards(inventory?.wards || []);
+  }, [inventory]);
+
   const updateBedMutation = useMutation({
     mutationFn: async (payload: { wardName: string; bedType: string; status: string; count: number }) => {
-      const res = await apiRequest(`/resources/${user?.hospital}/beds`, {
-        method: "PUT",
-        auth: true,
-        body: payload
-      });
-      return res.data;
+      const res = await axiosInstance.put(`/resources/${user?.hospital}/beds`, payload);
+      return res.data?.data || res.data;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["resources", user?.hospital] });
@@ -77,18 +87,14 @@ const AdminInventory = () => {
       setEditModal(null);
     },
     onError: (err: any) => {
-      toast.error(err.message || "Failed to update bed count");
+      toast.error(err?.response?.data?.message || err?.message || "Failed to update bed count");
     }
   });
 
   const updateInventoryMutation = useMutation({
     mutationFn: async (wards: WardData[]) => {
-      const res = await apiRequest(`/resources/${user?.hospital}`, {
-        method: "PUT",
-        auth: true,
-        body: { wards }
-      });
-      return res.data;
+      const res = await axiosInstance.put(`/resources/${user?.hospital}`, { wards });
+      return res.data?.data || res.data;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["resources", user?.hospital] });
@@ -98,28 +104,7 @@ const AdminInventory = () => {
       setNewWardBeds([]);
     },
     onError: (err: any) => {
-      toast.error(err.message || "Failed to update inventory");
-    }
-  });
-
-  const createInventoryMutation = useMutation({
-    mutationFn: async (payload: { hospital: string; region: string; wards: WardData[] }) => {
-      const res = await apiRequest(`/resources`, {
-        method: "POST",
-        auth: true,
-        body: payload
-      });
-      return res.data;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["resources", user?.hospital] });
-      toast.success("Inventory created");
-      setAddWardModal(false);
-      setNewWardName("");
-      setNewWardBeds([]);
-    },
-    onError: (err: any) => {
-      toast.error(err.message || "Failed to create inventory");
+      toast.error(err?.response?.data?.message || err?.message || "Failed to update inventory");
     }
   });
 
@@ -133,9 +118,19 @@ const AdminInventory = () => {
     });
   };
 
-  const handleCreateWard = () => {
+  const handleCreateWard = async () => {
     if (!newWardName.trim()) {
       toast.error("Ward name is required");
+      return;
+    }
+
+    if (!user?.hospital) {
+      toast.error("No hospital assigned");
+      return;
+    }
+
+    if (!newWardBeds.length) {
+      toast.error("Add at least one bed type and capacity");
       return;
     }
     
@@ -153,26 +148,54 @@ const AdminInventory = () => {
       beds: bedsArray
     };
 
-    if (!inventory && user?.hospital) {
-      createInventoryMutation.mutate({
-        hospital: user.hospital,
-        region: "Default Region", // Backend usually sets this automatically but we provide fallback
-        wards: [newWard]
-      });
-    } else if (inventory) {
-      if (inventory.wards.find(w => w.wardName === newWard.wardName)) {
-        toast.error("A ward with this name already exists");
-        return;
+    if (wards.find(w => w.wardName === newWard.wardName)) {
+      toast.error("A ward with this name already exists");
+      return;
+    }
+
+    const nextWards = [...wards, newWard];
+
+    try {
+      setIsCreatingWard(true);
+
+      try {
+        await axiosInstance.post("/resources", {
+          hospital: user.hospital,
+          region: inventory?.region || "Default Region",
+          wards: nextWards,
+        });
+      } catch (err: any) {
+        const status = err?.response?.status;
+        const isExistingInventoryConflict = status === 409 && !!inventory;
+
+        if (!isExistingInventoryConflict) {
+          throw err;
+        }
+
+        await axiosInstance.put(`/resources/${user.hospital}`, {
+          wards: nextWards,
+        });
       }
-      updateInventoryMutation.mutate([...inventory.wards, newWard]);
+
+      setWards(nextWards);
+      toast.success("Ward created successfully");
+      setAddWardModal(false);
+      setNewWardName("");
+      setNewWardBeds([]);
+      queryClient.invalidateQueries({ queryKey: ["resources", user?.hospital] });
+    } catch (err: any) {
+      const message = err?.response?.data?.message || err?.message || "Failed to create ward";
+      toast.error(message);
+    } finally {
+      setIsCreatingWard(false);
     }
   };
 
   const handleDeleteWard = (wardName: string) => {
-    if (!inventory) return;
     if (!confirm(`Are you sure you want to delete ${wardName}?`)) return;
     
-    const filteredWards = inventory.wards.filter(w => w.wardName !== wardName);
+    const filteredWards = wards.filter(w => w.wardName !== wardName);
+    setWards(filteredWards);
     updateInventoryMutation.mutate(filteredWards);
   };
 
@@ -184,9 +207,9 @@ const AdminInventory = () => {
       oxygen: { occupied: 0, total: 0 },
     };
 
-    if (!inventory?.wards) return summary;
+    if (!wards.length) return summary;
 
-    inventory.wards.forEach(ward => {
+    wards.forEach(ward => {
       ward.beds.forEach(bed => {
         let category: keyof typeof summary | null = null;
         if (bed.type === "ICU") category = "icu";
@@ -203,7 +226,7 @@ const AdminInventory = () => {
       });
     });
     return summary;
-  }, [inventory]);
+  }, [wards]);
 
   if (isLoading) {
     return (
@@ -269,13 +292,13 @@ const AdminInventory = () => {
         </div>
 
         {/* Wards List Check */}
-        {!inventory?.wards || inventory.wards.length === 0 ? (
+        {wards.length === 0 ? (
            <div className="flex flex-col items-center justify-center h-48 border border-dashed border-border rounded-lg bg-card/30">
             <p className="text-muted-foreground mb-4">No wards have been added to your hospital yet.</p>
            </div>
         ) : (
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            {inventory.wards.map((ward) => {
+            {wards.map((ward) => {
               // Calculate occupied/total per category for a ward
               const localStats = {
                 "ICU": { occupied: 0, total: 0 },
@@ -443,15 +466,15 @@ const AdminInventory = () => {
                     setNewWardName("");
                     setNewWardBeds([]);
                   }}
-                  disabled={createInventoryMutation.isPending || updateInventoryMutation.isPending}
+                  disabled={isCreatingWard || updateInventoryMutation.isPending}
                 >
                   Cancel
                 </Button>
                 <Button 
                   onClick={handleCreateWard} 
-                  disabled={createInventoryMutation.isPending || updateInventoryMutation.isPending}
+                  disabled={isCreatingWard || updateInventoryMutation.isPending}
                 >
-                  {(createInventoryMutation.isPending || updateInventoryMutation.isPending) && <Loader2 className="animate-spin mr-2" size={16} />}
+                  {(isCreatingWard || updateInventoryMutation.isPending) && <Loader2 className="animate-spin mr-2" size={16} />}
                   Create Ward
                 </Button>
               </div>
@@ -473,7 +496,7 @@ const AdminInventory = () => {
                     onChange={(e) => {
                       const newStatus = e.target.value as BedStatus;
                       // Find existing count for this status to auto-fill
-                      const existingBed = inventory?.wards.find(w => w.wardName === editModal.ward)?.beds.find(b => b.type === editModal.type && b.status === newStatus);
+                      const existingBed = wards.find(w => w.wardName === editModal.ward)?.beds.find(b => b.type === editModal.type && b.status === newStatus);
                       setEditModal({...editModal, status: newStatus, count: existingBed ? existingBed.count : 0 });
                     }}
                     className="w-full rounded-md border border-border bg-secondary px-3 py-2 text-sm text-foreground"
