@@ -6,6 +6,7 @@ const ApiResponse = require("../utils/ApiResponse");
 const catchAsync = require("../utils/catchAsync");
 const tokenService = require("../services/tokenService");
 const { sendActivationEmail } = require("../services/emailService");
+const ROLES = require("../utils/roles");
 
 const register = catchAsync(async (req, res) => {
 	const { name, email, password, role, hospitalId } = req.body;
@@ -16,14 +17,41 @@ const register = catchAsync(async (req, res) => {
 		throw new ApiError(409, "Email already registered", "EMAIL_EXISTS");
 	}
 
+	// Users that require approval (do not get activation email immediately)
+	const requiresApproval = [ROLES.HOSPITAL_ADMIN, ROLES.DOCTOR].includes(role);
+
 	const user = await User.create({
 		name,
 		email: normalizedEmail,
 		password,
 		role,
 		hospital: hospitalId || null,
+		isApproved: !requiresApproval,
 	});
 
+	// If the role requires approval, do not send activation email yet.
+	if (requiresApproval) {
+		return res.status(201).json(
+			new ApiResponse(
+				201,
+				{
+					user: {
+						id: user._id,
+						name: user.name,
+						email: user.email,
+						role: user.role,
+						isActive: user.isActive,
+						isApproved: user.isApproved,
+					},
+					pendingApproval: true,
+					activationEmailSent: false,
+				},
+				"Registration created. Account is pending approval by the required authority."
+			)
+		);
+	}
+
+	// Roles that do not require approval get an activation email immediately.
 	const activationToken = tokenService.generateActivationToken(user);
 	const clientUrl = process.env.CLIENT_URL || "http://localhost:5173";
 	const activationLink = `${clientUrl}/activate?token=${activationToken}`;
@@ -94,11 +122,10 @@ const login = catchAsync(async (req, res) => {
 	}
 
 	if (!user.isActive) {
-		throw new ApiError(
-			403,
-			"Account not activated. Please use the activation link.",
-			"ACCOUNT_INACTIVE"
-		);
+		if (user.isApproved === false) {
+			throw new ApiError(403, "Account pending approval. Please wait for approval.", "ACCOUNT_PENDING_APPROVAL");
+		}
+		throw new ApiError(403, "Account not activated. Please use the activation link.", "ACCOUNT_INACTIVE");
 	}
 
 	user.lastLoginAt = new Date();

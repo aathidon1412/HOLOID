@@ -13,6 +13,7 @@ import AdminTransfers from "@/pages/admin/AdminTransfers";
 import AdminAlerts from "@/pages/admin/AdminAlerts";
 import AdminAnalytics from "@/pages/admin/AdminAnalytics";
 import AdminSettings from "@/pages/admin/AdminSettings";
+import AdminUsers from "@/pages/admin/AdminUsers";
 import DoctorOverview from "@/pages/doctor/DoctorOverview";
 import DoctorRequestTransfer from "@/pages/doctor/DoctorRequestTransfer";
 import DoctorTransfers from "@/pages/doctor/DoctorTransfers";
@@ -50,6 +51,7 @@ const App = () => (
                 <Route path="/admin/alerts" element={<AdminAlerts />} />
                 <Route path="/admin/analytics" element={<AdminAnalytics />} />
                 <Route path="/admin/settings" element={<AdminSettings />} />
+                <Route path="/admin/users" element={<AdminUsers />} />
               </Route>
 
               {/* Doctor Routes */}

@@ -28,6 +28,7 @@ const LoginPage = () => {
   const [isWorking, setIsWorking] = useState(false);
   const [error, setError] = useState<string>("");
   const [postRegisterMessage, setPostRegisterMessage] = useState<string>("");
+  const [hospitals, setHospitals] = useState<Array<{ id: string; name: string }>>([]);
 
   const roleRoute = useMemo(() => ROLE_ROUTES[role], [role]);
 
@@ -52,7 +53,14 @@ const LoginPage = () => {
     setError("");
     setPostRegisterMessage("");
     try {
-      await register({
+      // Validate hospital selection for roles that require it
+      if ((role === "HOSPITAL_ADMIN" || role === "DOCTOR") && !hospitalId.trim()) {
+        setError("Please select a hospital");
+        setIsWorking(false);
+        return;
+      }
+
+      const result = await register({
         name,
         email,
         password,
@@ -62,7 +70,14 @@ const LoginPage = () => {
 
       setMode("signin");
       setPassword("");
-      setPostRegisterMessage("Account created. Please check your email for the activation link.");
+
+      if (result.pendingApproval) {
+        setPostRegisterMessage("Account created and is pending approval. You will receive an activation email after approval.");
+      } else if (result.activationEmailSent) {
+        setPostRegisterMessage("Account created. Please check your email for the activation link.");
+      } else {
+        setPostRegisterMessage("Account created. Activation email was skipped (mailer not configured).");
+      }
     } catch (e) {
       const msg = e instanceof ApiClientError ? e.message : "Registration failed.";
       setError(msg);
@@ -70,6 +85,33 @@ const LoginPage = () => {
       setIsWorking(false);
     }
   };
+
+  // Fetch hospitals for dropdown when role requires them
+  useMemo(() => {
+    const needsHospital = role === "HOSPITAL_ADMIN" || role === "DOCTOR";
+    if (!needsHospital) {
+      setHospitals([]);
+      return;
+    }
+
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await (await import("@/lib/api")).apiRequest<any>(`/hospitals/list`);
+        if (!cancelled && res && res.data && Array.isArray(res.data.hospitals)) {
+          setHospitals(
+            res.data.hospitals.map((h: any) => ({ id: h._id || h.id, name: h.name || h._id || h.id }))
+          );
+        }
+      } catch (e) {
+        // ignore — keep hospitals empty so user can paste an id
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [role]);
 
   return (
     <div className="flex min-h-screen">
@@ -135,16 +177,6 @@ const LoginPage = () => {
             </div>
           )}
 
-          {/* Quick Login Buttons (Demo) */}
-          <div className="rounded-lg border border-border bg-card p-3 space-y-2 shadow-sm">
-            <p className="text-muted-foreground text-[10px] text-center uppercase tracking-widest font-bold">Quick Demo Entry</p>
-            <div className="flex gap-2">
-              <Button variant="outline" size="sm" onClick={() => { setEmail("admin@hospital.com"); }} className="flex-1 h-8 text-xs font-semibold hover:bg-primary/10 hover:text-primary transition-all">Admin</Button>
-              <Button variant="outline" size="sm" onClick={() => { setEmail("doctor@hospital.com"); }} className="flex-1 h-8 text-xs font-semibold hover:bg-primary/10 hover:text-primary transition-all">Doctor</Button>
-              <Button variant="outline" size="sm" onClick={() => { setEmail("gov@health.gov"); }} className="flex-1 h-8 text-xs font-semibold hover:bg-primary/10 hover:text-primary transition-all">Gov</Button>
-            </div>
-          </div>
-
           {mode === "signin" ? (
             <form onSubmit={handleSignIn} className="space-y-4">
               <div className="space-y-2">
@@ -194,14 +226,30 @@ const LoginPage = () => {
               </div>
               {role !== "GOVERNMENT_OFFICIAL" && (
                 <div className="space-y-2">
-                  <Label htmlFor="hospitalId">Hospital ID (optional)</Label>
-                  <Input
-                    id="hospitalId"
-                    placeholder="MongoDB hospitalId"
-                    value={hospitalId}
-                    onChange={(e) => setHospitalId(e.target.value)}
-                    className="bg-secondary border-border"
-                  />
+                  <Label htmlFor="hospitalId">Hospital</Label>
+                  {hospitals.length > 0 ? (
+                    <select
+                      id="hospitalId"
+                      value={hospitalId}
+                      onChange={(e) => setHospitalId(e.target.value)}
+                      className="w-full rounded-md border border-border bg-secondary px-3 py-2 text-sm text-foreground"
+                    >
+                      <option value="">Select hospital (required for Hospital Admin / Doctor)</option>
+                      {hospitals.map((h) => (
+                        <option key={h.id} value={h.id}>
+                          {h.name}
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    <Input
+                      id="hospitalId"
+                      placeholder="MongoDB hospitalId or leave blank"
+                      value={hospitalId}
+                      onChange={(e) => setHospitalId(e.target.value)}
+                      className="bg-secondary border-border"
+                    />
+                  )}
                 </div>
               )}
               <Button type="submit" className="w-full" disabled={isWorking}>

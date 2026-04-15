@@ -47,6 +47,13 @@ const userSchema = new mongoose.Schema(
 	}
 );
 
+userSchema.add({
+	// Whether this user has been approved by the required authority
+	isApproved: { type: Boolean, default: false },
+	approvedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
+	approvedAt: { type: Date, default: null },
+});
+
 userSchema.pre("save", async function preSave() {
 	if (!this.isModified("password")) {
 		return;

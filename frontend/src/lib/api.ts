@@ -62,11 +62,34 @@ export async function apiRequest<T>(
 
   const contentType = res.headers.get("content-type") || "";
   const isJson = contentType.includes("application/json");
-  const payload: ApiEnvelope<T> | null = isJson ? await res.json() : null;
+  let payload: ApiEnvelope<T> | null = null;
+  let bodyText: string | null = null;
+
+  if (isJson) {
+    try {
+      payload = await res.json();
+    } catch (err) {
+      // JSON parsing failed despite content-type; capture raw text for diagnostics
+      try {
+        bodyText = await res.text();
+      } catch (e) {
+        bodyText = null;
+      }
+      payload = null;
+    }
+  } else {
+    // non-json response — capture plain text for error messages
+    try {
+      bodyText = await res.text();
+    } catch (e) {
+      bodyText = null;
+    }
+  }
 
   if (!res.ok) {
     const message =
       (payload && "success" in payload && !payload.success && payload.error?.message) ||
+      bodyText ||
       res.statusText ||
       "Request failed";
     const code =
@@ -75,7 +98,8 @@ export async function apiRequest<T>(
   }
 
   if (!payload || !("success" in payload) || payload.success !== true) {
-    throw new ApiClientError("Unexpected API response", { status: res.status });
+    const message = bodyText || "Unexpected API response";
+    throw new ApiClientError(message, { status: res.status });
   }
 
   return payload;

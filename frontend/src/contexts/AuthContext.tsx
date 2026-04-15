@@ -28,8 +28,9 @@ const AuthContext = createContext<AuthContextType | null>(null);
 type LoginResponse = { accessToken: string; user: User };
 type VerifyResponse = { user: User };
 type RegisterResponse = {
-  user: { id: string; name: string; email: string; role: UserRole; isActive: boolean };
+  user: { id: string; name: string; email: string; role: UserRole; isActive: boolean; isApproved?: boolean };
   activationEmailSent?: boolean;
+  pendingApproval?: boolean;
 };
 
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
@@ -69,7 +70,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const register = async (data: { name: string; email: string; password: string; role: UserRole; hospitalId?: string | null }) => {
-    await apiRequest<RegisterResponse>("/auth/register", {
+    const res = await apiRequest<RegisterResponse>("/auth/register", {
       method: "POST",
       body: {
         name: data.name,
@@ -79,6 +80,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         hospitalId: data.hospitalId || undefined,
       },
     });
+
+    return res.data;
   };
 
   const logout = async () => {

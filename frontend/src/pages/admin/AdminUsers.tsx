@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { useEffect, useState } from "react";
 import { apiRequest } from "@/lib/api";
 
-const GovUsers = () => {
+const AdminUsers = () => {
   const [users, setUsers] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
 
@@ -35,18 +35,8 @@ const GovUsers = () => {
 
   return (
     <div>
-      <TopBar title="User Management" />
+      <TopBar title="Pending User Approvals" />
       <div className="p-6 space-y-6">
-        <div className="flex gap-4 items-center flex-wrap">
-          <select className="rounded-md border border-border bg-secondary px-3 py-2 text-sm text-foreground">
-            <option>All Roles</option><option>Hospital Admin</option><option>Doctor</option><option>Government Official</option>
-          </select>
-          <select className="rounded-md border border-border bg-secondary px-3 py-2 text-sm text-foreground">
-            <option>All Status</option><option>Active</option><option>Pending</option>
-          </select>
-          <input placeholder="Search users..." className="rounded-md border border-border bg-secondary px-3 py-2 text-sm text-foreground w-64" />
-        </div>
-
         <div className="overflow-x-auto rounded-lg border border-border">
           <table className="w-full text-sm">
             <thead className="bg-muted">
@@ -54,34 +44,28 @@ const GovUsers = () => {
                 <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground">Name</th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground">Email</th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground">Role</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground">Status</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground">Requested</th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border bg-card">
               {users.map((u) => (
-                <tr key={u.email} className="hover:bg-accent/50 transition-colors">
+                <tr key={u._id} className="hover:bg-accent/50 transition-colors">
                   <td className="px-4 py-3 font-medium text-foreground">{u.name}</td>
                   <td className="px-4 py-3 text-muted-foreground">{u.email}</td>
                   <td className="px-4 py-3 text-muted-foreground">{u.role}</td>
-                  <td className="px-4 py-3"><StatusBadge status={"warning"} label={"Pending"} /></td>
+                  <td className="px-4 py-3 text-muted-foreground">{new Date(u.createdAt).toLocaleString()}</td>
                   <td className="px-4 py-3">
-                    <Button variant="outline" size="sm" onClick={() => handleApprove(u._id)}>Approve</Button>
+                    <Button onClick={() => handleApprove(u._id)} variant="outline" size="sm">Approve</Button>
                   </td>
                 </tr>
               ))}
-              {users.length === 0 && !loading && (
-                <tr>
-                  <td colSpan={5} className="px-4 py-6 text-center text-sm text-muted-foreground">No pending users</td>
-                </tr>
-              )}
             </tbody>
           </table>
         </div>
-        <p className="text-xs text-muted-foreground">Showing pending approvals</p>
       </div>
     </div>
   );
 };
 
-export default GovUsers;
+export default AdminUsers;
