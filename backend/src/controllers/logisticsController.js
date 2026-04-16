@@ -2813,6 +2813,7 @@ const updateDriverDispatchProgress = async (req, res) => {
   let updatedTransfer = null;
   let hospitalRegion = "";
   let sourceReleasedSlot = null;
+  let destinationOccupiedSlot = null;
 
   try {
     const result = await runWithOptionalTransaction(async (session) => {
@@ -2877,7 +2878,63 @@ const updateDriverDispatchProgress = async (req, res) => {
       }
 
       if (nextWorkflowStatus === "handover_complete") {
-        transfer.timeline.push({ status: transfer.status, note: note || "Driver marked handover complete" });
+        if (!transfer.sourceBedReleasedAt) {
+          const releasedSourceSlot = await releaseOneOccupiedSourceBedSlot({
+            hospitalId: transfer.fromHospital?._id || transfer.fromHospital,
+            normalizedBedType: transfer.requiredBedType,
+            session
+          });
+
+          if (releasedSourceSlot) {
+            sourceReleasedSlot = releasedSourceSlot;
+            transfer.sourceBedReleasedAt = new Date();
+
+            if (transfer.fromHospital) {
+              transfer.fromHospital.resources[transfer.requiredBedType] =
+                Number(transfer.fromHospital.resources?.[transfer.requiredBedType] || 0) + 1;
+              await saveWithSession(transfer.fromHospital, session);
+              await syncResourceInventoryFromBedSlots({ hospitalId: transfer.fromHospital._id, session });
+            }
+          }
+        }
+
+        if (transfer.reservationStatus === "reserved" && transfer.reservedBedSlot) {
+          const occupiedSlot = await occupyReservedBedSlot({
+            bedSlotId: transfer.reservedBedSlot,
+            transferId: transfer._id,
+            patientId: transfer.patient ? transfer.patient._id : null,
+            session
+          });
+
+          if (!occupiedSlot) {
+            throw new Error("Reserved bed slot is no longer available");
+          }
+
+          destinationOccupiedSlot = occupiedSlot;
+          transfer.reservationStatus = "occupied";
+          transfer.destinationBedSnapshot = {
+            ...transfer.destinationBedSnapshot,
+            bedType: occupiedSlot.bedType,
+            wardName: occupiedSlot.wardName,
+            slotLabel: occupiedSlot.slotLabel,
+            reservedAt: occupiedSlot.reservedAt,
+            occupiedAt: occupiedSlot.occupiedAt,
+            releasedAt: null
+          };
+
+          if (transfer.toHospital?._id) {
+            await syncResourceInventoryFromBedSlots({ hospitalId: transfer.toHospital._id, session });
+          }
+        }
+
+        transfer.status = "completed";
+        transfer.timeline.push({ status: "completed", note: note || "Driver marked handover complete" });
+
+        if (transfer.patient) {
+          transfer.patient.currentHospital = transfer.toHospital?._id || transfer.toHospital || null;
+          transfer.patient.status = "admitted";
+          await saveWithSession(transfer.patient, session);
+        }
 
         if (transfer.assignedAmbulance) {
           transfer.assignedAmbulance.status = "available";
@@ -2906,6 +2963,10 @@ const updateDriverDispatchProgress = async (req, res) => {
       message.includes("must be accepted") ||
       message.includes("already closed")
     ) {
+      return res.status(409).json({ message });
+    }
+
+    if (message.includes("reservation") || message.includes("slot")) {
       return res.status(409).json({ message });
     }
 
@@ -2957,6 +3018,21 @@ const updateDriverDispatchProgress = async (req, res) => {
       requiredBedType: transfer?.requiredBedType,
       reservationStatus: "released_source_in_transit",
       note: note || "Source bed released as transfer moved in transit"
+    });
+  }
+
+  if (destinationOccupiedSlot) {
+    emitBedSlotLifecycleEvent(req, {
+      eventName: BED_SLOT_SOCKET_EVENTS.OCCUPIED,
+      hospitalId: transfer?.toHospital?._id,
+      region: transfer?.toHospital?.region,
+      slot: destinationOccupiedSlot,
+      previousStatus: "Reserved",
+      transferId: transfer?._id,
+      patientId: transfer?.patient?._id,
+      requiredBedType: transfer?.requiredBedType,
+      reservationStatus: "occupied",
+      note: note || "Destination bed occupied after handover completion"
     });
   }
 
