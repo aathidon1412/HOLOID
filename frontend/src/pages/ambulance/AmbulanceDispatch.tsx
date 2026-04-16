@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 
@@ -47,8 +47,6 @@ const urlBase64ToUint8Array = (base64String: string) => {
 const AmbulanceDispatch = () => {
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState<"inbox" | "history">("inbox");
-  const [locationCadenceSec, setLocationCadenceSec] = useState<number>(30);
-  const hasShownLocationErrorRef = useRef(false);
 
   const refreshDispatchData = useCallback(() => {
     queryClient.invalidateQueries({ queryKey: ["driver-dispatch-inbox"] });
@@ -58,7 +56,6 @@ const AmbulanceDispatch = () => {
   useSocket({ eventName: "dispatch-assigned", onEvent: refreshDispatchData });
   useSocket({ eventName: "dispatch-responded", onEvent: refreshDispatchData });
   useSocket({ eventName: "dispatch-progress-updated", onEvent: refreshDispatchData });
-  useSocket({ eventName: "dispatch-location-updated", onEvent: refreshDispatchData });
 
   const { data: inbox = [], isLoading: loadingInbox } = useQuery<DispatchTransfer[]>({
     queryKey: ["driver-dispatch-inbox"],
@@ -101,34 +98,11 @@ const AmbulanceDispatch = () => {
     },
   });
 
-  const locationMutation = useMutation({
-    mutationFn: ({ transferId, lat, lng, isMoving, speedKmph }: {
-      transferId: string;
-      lat: number;
-      lng: number;
-      isMoving: boolean;
-      speedKmph?: number | null;
-    }) => ambulanceDispatchService.updateLocation(transferId, { lat, lng, isMoving, speedKmph }),
-    onSuccess: (result) => {
-      setLocationCadenceSec(result.cadenceSec || 30);
-      hasShownLocationErrorRef.current = false;
-    },
-  });
-
   const inboxCards = useMemo(() => {
     return inbox.map((transfer) => {
       const nextStep = getNextProgressStep(transfer.driverWorkflowStatus);
       return { transfer, nextStep };
     });
-  }, [inbox]);
-
-  const activeLiveTransfer = useMemo(() => {
-    return inbox.find(
-      (transfer) =>
-        transfer.dispatchStatus === "accepted" &&
-        transfer.driverWorkflowStatus !== "handover_complete" &&
-        ["requested", "dispatched", "in_transit"].includes(transfer.status)
-    );
   }, [inbox]);
 
   useEffect(() => {
@@ -180,70 +154,6 @@ const AmbulanceDispatch = () => {
     };
   }, []);
 
-  useEffect(() => {
-    if (!activeLiveTransfer?._id) {
-      setLocationCadenceSec(30);
-      return;
-    }
-
-    if (!("geolocation" in navigator)) {
-      return;
-    }
-
-    let disposed = false;
-    let intervalId: number | null = null;
-
-    const workflowStatus = activeLiveTransfer.driverWorkflowStatus;
-    const isMovingByStatus = workflowStatus === "en_route" || workflowStatus === "in_transit";
-    const cadence = isMovingByStatus ? 5 : 30;
-    setLocationCadenceSec(cadence);
-
-    const streamLocation = () => {
-      navigator.geolocation.getCurrentPosition(
-        async (position) => {
-          if (disposed) return;
-
-          const speedMetersPerSecond = Number(position.coords.speed ?? 0);
-          const speedKmph = Number.isFinite(speedMetersPerSecond)
-            ? Number((Math.max(0, speedMetersPerSecond) * 3.6).toFixed(2))
-            : null;
-
-          try {
-            await locationMutation.mutateAsync({
-              transferId: activeLiveTransfer._id,
-              lat: position.coords.latitude,
-              lng: position.coords.longitude,
-              isMoving: isMovingByStatus,
-              speedKmph,
-            });
-          } catch {
-            if (!hasShownLocationErrorRef.current) {
-              hasShownLocationErrorRef.current = true;
-              toast.error("Live location update failed. Retrying in background.");
-            }
-          }
-        },
-        () => {
-          // Silent geolocation failures avoid noisy repeated toasts on permission denial.
-        },
-        {
-          enableHighAccuracy: true,
-          timeout: 10000,
-          maximumAge: cadence * 1000,
-        }
-      );
-    };
-
-    streamLocation();
-    intervalId = window.setInterval(streamLocation, cadence * 1000);
-
-    return () => {
-      disposed = true;
-      if (intervalId) {
-        window.clearInterval(intervalId);
-      }
-    };
-  }, [activeLiveTransfer?._id, activeLiveTransfer?.driverWorkflowStatus, locationMutation]);
 
   return (
     <div>
@@ -252,7 +162,7 @@ const AmbulanceDispatch = () => {
         <div className="flex items-center justify-between">
           <LiveIndicator />
           <span className="text-xs text-muted-foreground">
-            Live cadence: {locationCadenceSec}s {activeLiveTransfer ? "(tracking active dispatch)" : "(idle)"}
+            Manual dispatch workflow updates by driver
           </span>
         </div>
 

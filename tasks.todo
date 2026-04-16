@@ -13,7 +13,7 @@
 ☑ Command-center endpoints: region-wise occupancy summary (basic) [Bharath]
 ☑ Email notifications for critical alerts & transfer events [Bharath]
 ✔ Remove data entry role completely @done (4/16/2026, 2:44:33 PM)
-☐ Driver role all status updates should be manual by driver ,no live location tracking
+✔ Driver role all status updates should be manual by driver ,no live location tracking @done (4/16/2026, 3:02:03 PM)
 ☐ Government official role remove regional bed map
 ☐ Government official role real time data for transfer history and audit logs
 ☐ User management: reject button with reason across all user management endpoints (admin + self-service)
@@ -21,3 +21,4 @@
 ☐ Proper notification for critical alerts and transfer events for all roles(in-app only)
 ☐ Profile management: allow users to update their profile info and change password (with validation)
 ☐ Hospital admin login-user management add role column and filter by role
+☐ Hospital admin login-transfers and ambulance management-pending requests should be disappeared after approval or rejection
