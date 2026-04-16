@@ -1,7 +1,7 @@
 const mongoose = require("mongoose");
 
 const BED_TYPES = ["ICU", "General", "Ventilator", "Oxygen-supported"];
-const BED_STATUS = ["Occupied", "Vacant", "Maintenance"];
+const BED_STATUS = ["Occupied", "Vacant", "Maintenance", "Reserved", "Unavailable"];
 
 const wardBedSchema = new mongoose.Schema(
     {

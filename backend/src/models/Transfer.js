@@ -31,10 +31,23 @@ const routeSchema = new mongoose.Schema(
   { _id: false }
 );
 
+const destinationBedSnapshotSchema = new mongoose.Schema(
+  {
+    bedType: { type: String, default: "" },
+    wardName: { type: String, default: "" },
+    slotLabel: { type: String, default: "" },
+    reservedAt: { type: Date, default: null },
+    occupiedAt: { type: Date, default: null },
+    releasedAt: { type: Date, default: null }
+  },
+  { _id: false }
+);
+
 const transferSchema = new mongoose.Schema(
   {
     patientName: { type: String, required: true, trim: true },
     patientId: { type: String, default: "", trim: true },
+    patient: { type: mongoose.Schema.Types.ObjectId, ref: "Patient", default: null },
     requiredBedType: {
       type: String,
       enum: ["generalBeds", "icuBeds", "ventilatorBeds"],
@@ -49,6 +62,13 @@ const transferSchema = new mongoose.Schema(
       default: "requested",
       index: true
     },
+    reservedBedSlot: { type: mongoose.Schema.Types.ObjectId, ref: "BedSlot", default: null },
+    reservationStatus: {
+      type: String,
+      enum: ["none", "reserved", "occupied", "released"],
+      default: "none"
+    },
+    destinationBedSnapshot: { type: destinationBedSnapshotSchema, default: () => ({}) },
     route: { type: routeSchema, default: () => ({}) },
     timeline: { type: [timelineSchema], default: [] }
   },

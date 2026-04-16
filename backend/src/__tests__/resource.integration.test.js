@@ -66,7 +66,12 @@ describe("Resource API integration tests", () => {
             .query({ region: "north" });
 
         expect(response.status).toBe(200);
-        expect(response.body).toEqual(mockResources);
+        expect(response.body).toMatchObject({
+            success: true,
+            statusCode: 200,
+            message: "Resources fetched successfully",
+            data: mockResources,
+        });
         expect(Resource.find).toHaveBeenCalledWith({ region: "north" });
         expect(populateMock).toHaveBeenCalledWith("hospital");
     });
@@ -89,7 +94,12 @@ describe("Resource API integration tests", () => {
         const response = await request(app).post("/api/resources").send(payload);
 
         expect(response.status).toBe(201);
-        expect(response.body).toMatchObject({ _id: "inv-1", region: "north" });
+        expect(response.body).toMatchObject({
+            success: true,
+            statusCode: 201,
+            message: "Inventory created successfully",
+            data: { _id: "inv-1", region: "north" },
+        });
         expect(Resource.findOne).toHaveBeenCalledWith({ hospital: HOSPITAL_ID });
         expect(Resource.create).toHaveBeenCalledWith(payload);
     });

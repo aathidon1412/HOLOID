@@ -1,10 +1,20 @@
 const mongoose = require("mongoose");
 const Hospital = require("../models/Hospital");
 const Transfer = require("../models/Transfer");
+const Patient = require("../models/Patient");
 const { normalizeBedType, ALLOWED_BED_TYPES } = require("../utils/bedType");
 const { haversineDistanceKm, getRouteMetadata } = require("../services/mapService");
 const { createAuditLog } = require("../services/auditService");
 const { sendCriticalAlertEmail, sendTransferEventEmail } = require("../services/emailService");
+const {
+  reserveBedSlot,
+  occupyReservedBedSlot,
+  releaseReservedBedSlot,
+  releaseOneOccupiedSourceBedSlot,
+  slotTypeFromBedType
+} = require("../services/bedReservationService");
+
+const TRANSITIONAL_STATUSES = ["requested", "dispatched", "in_transit", "completed", "cancelled"];
 
 const getRequester = (body = {}) => ({
   role: body.role || "doctor",
@@ -37,6 +47,86 @@ const getHospitalCoordinates = (hospital) => {
   }
 
   return null;
+};
+
+const sessionOpts = (session) => (session ? { session } : undefined);
+
+const withSession = (query, session) => (session ? query.session(session) : query);
+
+const saveWithSession = (doc, session) => (session ? doc.save({ session }) : doc.save());
+
+const isTransactionUnsupportedError = (error) => {
+  const message = String(error && error.message ? error.message : "").toLowerCase();
+  return (
+    message.includes("transaction numbers are only allowed") ||
+    message.includes("replica set") ||
+    message.includes("transactions are not supported")
+  );
+};
+
+const runWithOptionalTransaction = async (operation) => {
+  const session = await mongoose.startSession();
+
+  try {
+    session.startTransaction();
+    const result = await operation(session);
+    await session.commitTransaction();
+    return result;
+  } catch (error) {
+    try {
+      await session.abortTransaction();
+    } catch (_e) {
+      // no-op
+    }
+
+    if (isTransactionUnsupportedError(error)) {
+      return operation(null);
+    }
+
+    throw error;
+  } finally {
+    await session.endSession();
+  }
+};
+
+const normalizePatientSex = (value) => {
+  const normalized = String(value || "").trim().toLowerCase();
+  if (["male", "female", "other"].includes(normalized)) {
+    return normalized;
+  }
+  return "unknown";
+};
+
+const upsertPatient = async ({ patientName, patientId, requiredBedType, fromHospitalId, patientAge, patientSex, session }) => {
+  let patient = null;
+
+  if (patientId) {
+    patient = await withSession(Patient.findOne({ patientId: String(patientId).trim() }), session);
+  }
+
+  if (!patient) {
+    patient = new Patient({
+      patientId: patientId ? String(patientId).trim() : "",
+      name: patientName,
+      age: Number.isFinite(Number(patientAge)) ? Number(patientAge) : null,
+      sex: normalizePatientSex(patientSex),
+      requiredBedType,
+      currentHospital: fromHospitalId,
+      status: "awaiting_transfer"
+    });
+  } else {
+    patient.name = patientName;
+    patient.requiredBedType = requiredBedType;
+    patient.currentHospital = fromHospitalId;
+    if (Number.isFinite(Number(patientAge))) {
+      patient.age = Number(patientAge);
+    }
+    patient.sex = normalizePatientSex(patientSex);
+    patient.status = "awaiting_transfer";
+  }
+
+  await saveWithSession(patient, session);
+  return patient;
 };
 
 const searchHospitalsByResource = async (req, res) => {
@@ -136,6 +226,8 @@ const requestPatientTransfer = async (req, res) => {
   const {
     patientName,
     patientId,
+    patientAge,
+    patientSex,
     requiredBedType,
     fromHospitalId,
     toHospitalId,
@@ -155,126 +247,227 @@ const requestPatientTransfer = async (req, res) => {
     return res.status(400).json({ message: "Invalid requiredBedType" });
   }
 
-  const fromHospital = await Hospital.findById(fromHospitalId);
-  if (!fromHospital) {
-    return res.status(404).json({ message: "fromHospital not found" });
-  }
+  let transferId = null;
+  let fromHospitalName = "";
+  let toHospitalName = "";
+  let toHospitalRegion = "";
+  let routeForNotification = null;
+  let remainingBeds = 0;
 
-  let toHospital = null;
-  const destinationHospitalId = toHospitalId || targetHospitalId;
+  try {
+    const creationResult = await runWithOptionalTransaction(async (session) => {
+      const fromHospital = await withSession(Hospital.findById(fromHospitalId), session);
+      if (!fromHospital) {
+        throw new Error("fromHospital not found");
+      }
 
-  if (destinationHospitalId) {
-    toHospital = await Hospital.findById(destinationHospitalId);
-    if (!toHospital) {
-      return res.status(404).json({ message: "toHospital not found" });
-    }
+      let toHospital = null;
+      const destinationHospitalId = toHospitalId || targetHospitalId;
 
-    if ((toHospital.resources?.[normalizedBedType] || 0) <= 0) {
-      return res.status(400).json({ message: "toHospital does not have available beds" });
-    }
-  } else {
-    const candidateFilter = {
-      _id: { $ne: fromHospital._id },
-      active: true,
-      [`resources.${normalizedBedType}`]: { $gte: 1 }
-    };
-
-    if (fromHospital.region) {
-      candidateFilter.region = fromHospital.region;
-    }
-
-    const candidates = await Hospital.find(candidateFilter).lean();
-
-    if (!candidates.length) {
-      return res.status(404).json({ message: "No destination hospital found" });
-    }
-
-    const fromHospitalCoordinates = getHospitalCoordinates(fromHospital);
-    if (!fromHospitalCoordinates) {
-      return res.status(400).json({ message: "fromHospital location coordinates are missing" });
-    }
-
-    const nearest = candidates
-      .map((hospital) => {
-        const targetCoordinates = getHospitalCoordinates(hospital);
-        if (!targetCoordinates) return null;
-
-        return {
-          ...hospital,
-          distanceKm: haversineDistanceKm(fromHospitalCoordinates, targetCoordinates)
+      if (destinationHospitalId) {
+        toHospital = await withSession(Hospital.findById(destinationHospitalId), session);
+        if (!toHospital) {
+          throw new Error("toHospital not found");
+        }
+      } else {
+        const candidateFilter = {
+          _id: { $ne: fromHospital._id },
+          active: true,
+          [`resources.${normalizedBedType}`]: { $gte: 1 }
         };
-      })
-      .filter(Boolean)
-      .sort((a, b) => a.distanceKm - b.distanceKm)[0];
 
-    if (!nearest) {
-      return res.status(404).json({ message: "No destination hospital with valid coordinates found" });
+        if (fromHospital.region) {
+          candidateFilter.region = fromHospital.region;
+        }
+
+        const candidates = await withSession(Hospital.find(candidateFilter).lean(), session);
+
+        if (!candidates.length) {
+          throw new Error("No destination hospital found");
+        }
+
+        const fromHospitalCoordinates = getHospitalCoordinates(fromHospital);
+        if (!fromHospitalCoordinates) {
+          throw new Error("fromHospital location coordinates are missing");
+        }
+
+        const nearest = candidates
+          .map((hospital) => {
+            const targetCoordinates = getHospitalCoordinates(hospital);
+            if (!targetCoordinates) return null;
+
+            return {
+              ...hospital,
+              distanceKm: haversineDistanceKm(fromHospitalCoordinates, targetCoordinates)
+            };
+          })
+          .filter(Boolean)
+          .sort((a, b) => a.distanceKm - b.distanceKm)[0];
+
+        if (!nearest) {
+          throw new Error("No destination hospital with valid coordinates found");
+        }
+
+        toHospital = await withSession(Hospital.findById(nearest._id), session);
+      }
+
+      if ((toHospital.resources?.[normalizedBedType] || 0) <= 0) {
+        throw new Error("toHospital does not have available beds");
+      }
+
+      const fromHospitalCoordinates = getHospitalCoordinates(fromHospital);
+      const toHospitalCoordinates = getHospitalCoordinates(toHospital);
+
+      if (!fromHospitalCoordinates || !toHospitalCoordinates) {
+        throw new Error("Both hospitals must have valid coordinates");
+      }
+
+      const route = await getRouteMetadata(fromHospitalCoordinates, toHospitalCoordinates);
+
+      const patient = await upsertPatient({
+        patientName,
+        patientId,
+        requiredBedType: normalizedBedType,
+        fromHospitalId: fromHospital._id,
+        patientAge,
+        patientSex,
+        session
+      });
+
+      const transferDocs = await Transfer.create(
+        [
+          {
+            patientName,
+            patientId: patientId || "",
+            patient: patient._id,
+            requiredBedType: normalizedBedType,
+            fromHospital: fromHospital._id,
+            toHospital: toHospital._id,
+            requestedBy: getRequester(requestedBy),
+            status: "requested",
+            reservationStatus: "none",
+            route,
+            timeline: [{ status: "requested", note: "Transfer requested" }]
+          }
+        ],
+        sessionOpts(session)
+      );
+
+      const transfer = transferDocs[0];
+
+      const reservedSlot = await reserveBedSlot({
+        hospitalId: toHospital._id,
+        normalizedBedType,
+        transferId: transfer._id,
+        patientId: patient._id,
+        session
+      });
+
+      if (!reservedSlot) {
+        throw new Error("No exact bed slot available to reserve");
+      }
+
+      toHospital.resources[normalizedBedType] = Math.max(
+        0,
+        Number(toHospital.resources?.[normalizedBedType] || 0) - 1
+      );
+      await saveWithSession(toHospital, session);
+
+      transfer.reservedBedSlot = reservedSlot._id;
+      transfer.reservationStatus = "reserved";
+      transfer.destinationBedSnapshot = {
+        bedType: slotTypeFromBedType(normalizedBedType) || "",
+        wardName: reservedSlot.wardName,
+        slotLabel: reservedSlot.slotLabel,
+        reservedAt: reservedSlot.reservedAt,
+        occupiedAt: null,
+        releasedAt: null
+      };
+      await saveWithSession(transfer, session);
+
+      patient.transferHistory.push(transfer._id);
+      await saveWithSession(patient, session);
+
+      return {
+        transferId: transfer._id,
+        route,
+        fromHospitalName: fromHospital.name,
+        toHospitalName: toHospital.name,
+        toHospitalRegion: toHospital.region || toHospital.location?.state || "UNKNOWN",
+        remainingBeds: toHospital.resources?.[normalizedBedType] || 0
+      };
+    });
+
+    transferId = creationResult.transferId;
+    routeForNotification = creationResult.route;
+    fromHospitalName = creationResult.fromHospitalName;
+    toHospitalName = creationResult.toHospitalName;
+    toHospitalRegion = creationResult.toHospitalRegion;
+    remainingBeds = creationResult.remainingBeds;
+  } catch (error) {
+    const message = String(error && error.message ? error.message : "");
+
+    if (message.includes("fromHospital not found")) {
+      return res.status(404).json({ message });
+    }
+    if (message.includes("toHospital not found")) {
+      return res.status(404).json({ message });
+    }
+    if (
+      message.includes("No destination hospital") ||
+      message.includes("No exact bed slot available") ||
+      message.includes("available beds")
+    ) {
+      return res.status(409).json({ message });
+    }
+    if (message.includes("coordinates")) {
+      return res.status(400).json({ message });
     }
 
-    toHospital = await Hospital.findById(nearest._id);
+    throw error;
   }
-
-  const fromHospitalCoordinates = getHospitalCoordinates(fromHospital);
-  const toHospitalCoordinates = getHospitalCoordinates(toHospital);
-
-  if (!fromHospitalCoordinates || !toHospitalCoordinates) {
-    return res.status(400).json({ message: "Both hospitals must have valid coordinates" });
-  }
-
-  const route = await getRouteMetadata(fromHospitalCoordinates, toHospitalCoordinates);
-
-  const transfer = await Transfer.create({
-    patientName,
-    patientId: patientId || "",
-    requiredBedType: normalizedBedType,
-    fromHospital: fromHospital._id,
-    toHospital: toHospital._id,
-    requestedBy: getRequester(requestedBy),
-    status: "requested",
-    route,
-    timeline: [{ status: "requested", note: "Transfer requested" }]
-  });
 
   await createAuditLog({
     entityType: "transfer",
-    entityId: transfer._id,
+    entityId: transferId,
     action: "transfer_requested",
     actor: getRequester(requestedBy),
     metadata: {
       patientName,
       fromHospitalId,
-      toHospitalId: String(toHospital._id),
-      requiredBedType: normalizedBedType
+      requiredBedType: normalizedBedType,
+      reservationStatus: "reserved"
     }
   });
 
   const threshold = Number(process.env.CRITICAL_BED_THRESHOLD || 2);
-  const remainingBeds = toHospital.resources?.[normalizedBedType] || 0;
 
   if (remainingBeds <= threshold && Array.isArray(notificationEmails) && notificationEmails.length) {
     await sendCriticalAlertEmail({
       to: notificationEmails.join(","),
-      hospitalName: toHospital.name,
+      hospitalName: toHospitalName,
       bedType: normalizedBedType,
       remainingBeds,
-      region: toHospital.region || toHospital.location?.state || "UNKNOWN"
+      region: toHospitalRegion
     });
 
     await sendTransferEventEmail({
       to: notificationEmails.join(","),
-      transferId: String(transfer._id),
+      transferId: String(transferId),
       status: "requested",
       patientName,
-      fromHospitalName: fromHospital.name,
-      toHospitalName: toHospital.name,
-      note: "Transfer request created",
-      route
+      fromHospitalName,
+      toHospitalName,
+      note: "Transfer request created and bed reserved",
+      route: routeForNotification
     });
   }
 
-  const response = await Transfer.findById(transfer._id)
+  const response = await Transfer.findById(transferId)
     .populate("fromHospital", "name region location")
-    .populate("toHospital", "name region location");
+    .populate("toHospital", "name region location")
+    .populate("patient", "patientId name age sex status")
+    .populate("reservedBedSlot", "wardName bedType slotLabel status reservedAt");
 
   return res.status(201).json({ transfer: response });
 };
@@ -282,7 +475,9 @@ const requestPatientTransfer = async (req, res) => {
 const trackTransfer = async (req, res) => {
   const transfer = await Transfer.findById(req.params.transferId)
     .populate("fromHospital", "name region")
-    .populate("toHospital", "name region");
+    .populate("toHospital", "name region")
+    .populate("patient", "patientId name age sex status")
+    .populate("reservedBedSlot", "wardName bedType slotLabel status reservedAt occupiedAt releasedAt");
 
   if (!transfer) {
     return res.status(404).json({ message: "Transfer not found" });
@@ -331,40 +526,142 @@ const updateTransferStatus = async (req, res) => {
 
   const finalStatus = statusAlias[normalizedStatus] || normalizedStatus;
 
-  if (!["requested", "dispatched", "in_transit", "completed", "cancelled"].includes(finalStatus)) {
+  if (!TRANSITIONAL_STATUSES.includes(finalStatus)) {
     return res.status(400).json({ message: "Invalid status" });
   }
 
-  const transfer = await Transfer.findById(req.params.transferId)
-    .populate("fromHospital")
-    .populate("toHospital");
+  let transfer = null;
+  let slotOccupied = false;
+  let slotReleased = false;
 
-  if (!transfer) {
-    return res.status(404).json({ message: "Transfer not found" });
-  }
+  try {
+    const result = await runWithOptionalTransaction(async (session) => {
+      const transferDoc = await withSession(
+        Transfer.findById(req.params.transferId)
+          .populate("fromHospital")
+          .populate("toHospital")
+          .populate("patient")
+          .populate("reservedBedSlot"),
+        session
+      );
 
-  transfer.status = finalStatus;
-  transfer.timeline.push({ status: finalStatus, note: note || "" });
+      if (!transferDoc) {
+        throw new Error("Transfer not found");
+      }
 
-  if (finalStatus === "completed") {
-    const bedType = transfer.requiredBedType;
+      transferDoc.status = finalStatus;
+      transferDoc.timeline.push({ status: finalStatus, note: note || "" });
 
-    if ((transfer.toHospital.resources?.[bedType] || 0) <= 0) {
-      return res.status(400).json({ message: "Destination hospital bed unavailable" });
+      const bedType = transferDoc.requiredBedType;
+
+      if (finalStatus === "dispatched" || finalStatus === "in_transit") {
+        if (transferDoc.patient) {
+          transferDoc.patient.status = "in_transit";
+          await saveWithSession(transferDoc.patient, session);
+        }
+      }
+
+      if (finalStatus === "completed") {
+        if (transferDoc.reservationStatus !== "reserved" || !transferDoc.reservedBedSlot) {
+          throw new Error("Transfer does not have an active bed reservation");
+        }
+
+        const occupiedSlot = await occupyReservedBedSlot({
+          bedSlotId: transferDoc.reservedBedSlot._id,
+          transferId: transferDoc._id,
+          patientId: transferDoc.patient ? transferDoc.patient._id : null,
+          session
+        });
+
+        if (!occupiedSlot) {
+          throw new Error("Reserved bed slot is no longer available");
+        }
+
+        slotOccupied = true;
+
+        transferDoc.reservationStatus = "occupied";
+        transferDoc.destinationBedSnapshot = {
+          ...transferDoc.destinationBedSnapshot,
+          bedType: occupiedSlot.bedType,
+          wardName: occupiedSlot.wardName,
+          slotLabel: occupiedSlot.slotLabel,
+          reservedAt: occupiedSlot.reservedAt,
+          occupiedAt: occupiedSlot.occupiedAt,
+          releasedAt: null
+        };
+
+        transferDoc.fromHospital.resources[bedType] =
+          Number(transferDoc.fromHospital.resources?.[bedType] || 0) + 1;
+
+        await saveWithSession(transferDoc.fromHospital, session);
+
+        await releaseOneOccupiedSourceBedSlot({
+          hospitalId: transferDoc.fromHospital._id,
+          normalizedBedType: bedType,
+          session
+        });
+
+        if (transferDoc.patient) {
+          transferDoc.patient.currentHospital = transferDoc.toHospital._id;
+          transferDoc.patient.status = "admitted";
+          await saveWithSession(transferDoc.patient, session);
+        }
+      }
+
+      if (finalStatus === "cancelled") {
+        if (transferDoc.reservationStatus === "reserved" && transferDoc.reservedBedSlot) {
+          const releasedSlot = await releaseReservedBedSlot({
+            bedSlotId: transferDoc.reservedBedSlot._id,
+            transferId: transferDoc._id,
+            session
+          });
+
+          if (releasedSlot) {
+            slotReleased = true;
+            transferDoc.toHospital.resources[bedType] =
+              Number(transferDoc.toHospital.resources?.[bedType] || 0) + 1;
+            await saveWithSession(transferDoc.toHospital, session);
+
+            transferDoc.reservationStatus = "released";
+            transferDoc.destinationBedSnapshot = {
+              ...transferDoc.destinationBedSnapshot,
+              releasedAt: releasedSlot.releasedAt
+            };
+          }
+        }
+
+        if (transferDoc.patient) {
+          transferDoc.patient.status = "cancelled";
+          await saveWithSession(transferDoc.patient, session);
+        }
+      }
+
+      await saveWithSession(transferDoc, session);
+      return transferDoc;
+    });
+
+    transfer = result;
+  } catch (error) {
+    const message = String(error && error.message ? error.message : "");
+
+    if (message.includes("Transfer not found")) {
+      return res.status(404).json({ message });
     }
 
-    transfer.toHospital.resources[bedType] -= 1;
-    transfer.fromHospital.resources[bedType] += 1;
+    if (message.includes("reservation") || message.includes("slot")) {
+      return res.status(409).json({ message });
+    }
 
-    await transfer.toHospital.save();
-    await transfer.fromHospital.save();
+    throw error;
+  }
 
+  if (slotOccupied) {
     await createAuditLog({
       entityType: "hospital",
       entityId: transfer.toHospital._id,
       action: "bed_occupied_after_transfer",
       actor: getRequester(actor),
-      metadata: { bedType }
+      metadata: { bedType: transfer.requiredBedType, reservationStatus: "occupied" }
     });
 
     await createAuditLog({
@@ -372,11 +669,19 @@ const updateTransferStatus = async (req, res) => {
       entityId: transfer.fromHospital._id,
       action: "bed_released_after_transfer",
       actor: getRequester(actor),
-      metadata: { bedType }
+      metadata: { bedType: transfer.requiredBedType, reservationStatus: "released_source" }
     });
   }
 
-  await transfer.save();
+  if (slotReleased) {
+    await createAuditLog({
+      entityType: "hospital",
+      entityId: transfer.toHospital._id,
+      action: "reserved_bed_released",
+      actor: getRequester(actor),
+      metadata: { bedType: transfer.requiredBedType }
+    });
+  }
 
   await createAuditLog({
     entityType: "transfer",

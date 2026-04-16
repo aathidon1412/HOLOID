@@ -9,7 +9,7 @@ const {
 } = require("../controllers/resourceController");
 
 const BED_TYPES = ["ICU", "General", "Ventilator", "Oxygen-supported"];
-const BED_STATUSES = ["Occupied", "Vacant", "Maintenance"];
+const BED_STATUSES = ["Occupied", "Vacant", "Maintenance", "Reserved", "Unavailable"];
 
 const changeBedStatusValidation = [
     param("hospitalId")
@@ -29,7 +29,7 @@ const changeBedStatusValidation = [
         .withMessage("status is required")
         .bail()
         .isIn(BED_STATUSES)
-        .withMessage("status must be one of: Occupied, Vacant, Maintenance"),
+        .withMessage("status must be one of: Occupied, Vacant, Maintenance, Reserved, Unavailable"),
     (req, res, next) => {
         const errors = validationResult(req);
 

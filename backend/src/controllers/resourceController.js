@@ -4,7 +4,7 @@ const ApiResponse = require("../utils/ApiResponse");
 const ApiError = require("../utils/ApiError");
 
 const BED_TYPES = ["ICU", "General", "Ventilator", "Oxygen-supported"];
-const BED_STATUS = ["Occupied", "Vacant", "Maintenance"];
+const BED_STATUS = ["Occupied", "Vacant", "Maintenance", "Reserved", "Unavailable"];
 
 const isValidHospitalId = (hospitalId) =>
     hospitalId && mongoose.Types.ObjectId.isValid(hospitalId);
@@ -145,7 +145,7 @@ const updateBedStatus = (io) => async (req, res) => {
 
         if (!BED_STATUS.includes(status)) {
             return res.status(400).json({
-                message: "Invalid status. Allowed values: Occupied, Vacant, Maintenance",
+                message: "Invalid status. Allowed values: Occupied, Vacant, Maintenance, Reserved, Unavailable",
             });
         }
 
