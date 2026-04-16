@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 
@@ -6,6 +6,7 @@ import TopBar from "@/components/TopBar";
 import LiveIndicator from "@/components/LiveIndicator";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/contexts/AuthContext";
+import { useSocket } from "@/hooks/useSocket";
 import { bedManagerService, BedSlotItem, SlotStatus } from "@/services/bedManagerService";
 
 const STATUS_OPTIONS: SlotStatus[] = ["Vacant", "Reserved", "Maintenance", "Unavailable"];
@@ -22,6 +23,37 @@ const DataEntryBoard = () => {
     () => ({ role: user?.role || "DATA_ENTRY", id: user?.id || "", name: user?.name || "" }),
     [user?.id, user?.name, user?.role]
   );
+
+  const handleRealtimeOccupancyEvent = useCallback(
+    (payload?: { hospitalId?: string }) => {
+      if (payload?.hospitalId && user?.hospital && payload.hospitalId !== user.hospital) {
+        return;
+      }
+
+      queryClient.invalidateQueries({ queryKey: ["data-entry-bed-slots", user?.hospital] });
+    },
+    [queryClient, user?.hospital]
+  );
+
+  useSocket<{ hospitalId?: string }>({
+    eventName: "bed-slot-reserved",
+    onEvent: handleRealtimeOccupancyEvent,
+  });
+
+  useSocket<{ hospitalId?: string }>({
+    eventName: "bed-slot-occupied",
+    onEvent: handleRealtimeOccupancyEvent,
+  });
+
+  useSocket<{ hospitalId?: string }>({
+    eventName: "bed-slot-released",
+    onEvent: handleRealtimeOccupancyEvent,
+  });
+
+  useSocket<{ hospitalId?: string }>({
+    eventName: "bed-slot-status-changed",
+    onEvent: handleRealtimeOccupancyEvent,
+  });
 
   const { data: allSlots = [], isLoading } = useQuery<BedSlotItem[]>({
     queryKey: ["data-entry-bed-slots", user?.hospital],

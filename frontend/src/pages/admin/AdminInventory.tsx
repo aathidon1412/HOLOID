@@ -1,8 +1,9 @@
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useCallback } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Bed, Wind, HeartPulse, Droplets, Plus, Pencil, Loader2, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@/contexts/AuthContext";
+import { useSocket } from "@/hooks/useSocket";
 import axiosInstance from "@/api/axiosInstance";
 
 import TopBar from "@/components/TopBar";
@@ -53,6 +54,37 @@ const AdminInventory = () => {
   const [selectedNewBedCount, setSelectedNewBedCount] = useState<number>(0);
   const [wards, setWards] = useState<WardData[]>([]);
   const [isCreatingWard, setIsCreatingWard] = useState(false);
+
+  const handleRealtimeOccupancyEvent = useCallback(
+    (payload?: { hospitalId?: string }) => {
+      if (payload?.hospitalId && user?.hospital && payload.hospitalId !== user.hospital) {
+        return;
+      }
+
+      queryClient.invalidateQueries({ queryKey: ["resources", user?.hospital] });
+    },
+    [queryClient, user?.hospital]
+  );
+
+  useSocket<{ hospitalId?: string }>({
+    eventName: "bed-slot-reserved",
+    onEvent: handleRealtimeOccupancyEvent,
+  });
+
+  useSocket<{ hospitalId?: string }>({
+    eventName: "bed-slot-occupied",
+    onEvent: handleRealtimeOccupancyEvent,
+  });
+
+  useSocket<{ hospitalId?: string }>({
+    eventName: "bed-slot-released",
+    onEvent: handleRealtimeOccupancyEvent,
+  });
+
+  useSocket<{ hospitalId?: string }>({
+    eventName: "bed-slot-status-changed",
+    onEvent: handleRealtimeOccupancyEvent,
+  });
 
   const { data: inventory, isLoading } = useQuery({
     queryKey: ["resources", user?.hospital],

@@ -22,6 +22,9 @@ const startServer = async () => {
         },
     });
 
+    // Make socket server available to controllers through request app context.
+    app.set("io", io);
+
     const tokenService = require("./services/tokenService");
 
     // Mount routes that need access to `io`
@@ -49,6 +52,10 @@ const startServer = async () => {
 
     io.on("connection", (socket) => {
         console.log(`Client connected: ${socket.id} user=${socket.user && socket.user.id}`);
+
+        if (socket.user?.id) {
+            socket.join(`user-${socket.user.id}`);
+        }
 
         socket.on("join-region", (region) => {
             if (typeof region !== "string" || !region.trim()) return;

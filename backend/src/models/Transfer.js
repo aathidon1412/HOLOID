@@ -43,6 +43,31 @@ const destinationBedSnapshotSchema = new mongoose.Schema(
   { _id: false }
 );
 
+const driverTimelineSchema = new mongoose.Schema(
+  {
+    status: {
+      type: String,
+      enum: ["idle", "en_route", "arrived", "in_transit", "handover_complete"],
+      required: true
+    },
+    note: { type: String, default: "" },
+    updatedAt: { type: Date, default: Date.now }
+  },
+  { _id: false }
+);
+
+const dispatchMetaSchema = new mongoose.Schema(
+  {
+    assignedAt: { type: Date, default: null },
+    respondedAt: { type: Date, default: null },
+    acceptedAt: { type: Date, default: null },
+    rejectedAt: { type: Date, default: null },
+    rejectionReason: { type: String, default: "" },
+    lastStatusAt: { type: Date, default: null }
+  },
+  { _id: false }
+);
+
 const transferSchema = new mongoose.Schema(
   {
     patientName: { type: String, required: true, trim: true },
@@ -63,6 +88,22 @@ const transferSchema = new mongoose.Schema(
       index: true
     },
     reservedBedSlot: { type: mongoose.Schema.Types.ObjectId, ref: "BedSlot", default: null },
+    assignedAmbulance: { type: mongoose.Schema.Types.ObjectId, ref: "Ambulance", default: null },
+    assignedDriver: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
+    dispatchStatus: {
+      type: String,
+      enum: ["unassigned", "pending_driver", "accepted", "rejected"],
+      default: "unassigned",
+      index: true
+    },
+    driverWorkflowStatus: {
+      type: String,
+      enum: ["idle", "en_route", "arrived", "in_transit", "handover_complete"],
+      default: "idle",
+      index: true
+    },
+    dispatchMeta: { type: dispatchMetaSchema, default: () => ({}) },
+    driverTimeline: { type: [driverTimelineSchema], default: [] },
     reservationStatus: {
       type: String,
       enum: ["none", "reserved", "occupied", "released"],

@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 
@@ -6,6 +6,7 @@ import TopBar from "@/components/TopBar";
 import LiveIndicator from "@/components/LiveIndicator";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/contexts/AuthContext";
+import { useSocket } from "@/hooks/useSocket";
 import { bedManagerService, BedSlotItem, TransferItem } from "@/services/bedManagerService";
 
 const BED_TYPE_OPTIONS = [
@@ -36,6 +37,39 @@ const BedManagerEntry = () => {
     () => ({ role: user?.role || "BED_MANAGER", id: user?.id || "", name: user?.name || "" }),
     [user?.id, user?.name, user?.role]
   );
+
+  const handleRealtimeOccupancyEvent = useCallback(
+    (payload?: { hospitalId?: string }) => {
+      if (payload?.hospitalId && user?.hospital && payload.hospitalId !== user.hospital) {
+        return;
+      }
+
+      queryClient.invalidateQueries({ queryKey: ["bed-manager-open-transfers", user?.hospital] });
+      queryClient.invalidateQueries({ queryKey: ["bed-manager-vacant-slots", user?.hospital] });
+      queryClient.invalidateQueries({ queryKey: ["bed-manager-occupied-slots", user?.hospital] });
+    },
+    [queryClient, user?.hospital]
+  );
+
+  useSocket<{ hospitalId?: string }>({
+    eventName: "bed-slot-reserved",
+    onEvent: handleRealtimeOccupancyEvent,
+  });
+
+  useSocket<{ hospitalId?: string }>({
+    eventName: "bed-slot-occupied",
+    onEvent: handleRealtimeOccupancyEvent,
+  });
+
+  useSocket<{ hospitalId?: string }>({
+    eventName: "bed-slot-released",
+    onEvent: handleRealtimeOccupancyEvent,
+  });
+
+  useSocket<{ hospitalId?: string }>({
+    eventName: "bed-slot-status-changed",
+    onEvent: handleRealtimeOccupancyEvent,
+  });
 
   const { data: openTransfers = [], isLoading: loadingTransfers } = useQuery<TransferItem[]>({
     queryKey: ["bed-manager-open-transfers", user?.hospital],

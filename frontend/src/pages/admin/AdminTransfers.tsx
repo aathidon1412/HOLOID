@@ -39,6 +39,10 @@ type TransferRequestedPayload = {
   };
 };
 
+type BedSlotSocketPayload = {
+  hospitalId?: string;
+};
+
 const bedTypeKey = (value?: string): BedKey => {
   if (value === "generalBeds") return "generalBeds";
   if (value === "ventilatorBeds") return "ventilatorBeds";
@@ -62,29 +66,29 @@ const AdminTransfers = () => {
   });
   const [acceptingTransferId, setAcceptingTransferId] = useState<string | null>(null);
 
-  useEffect(() => {
-    const loadCurrentHospitalBeds = async () => {
-      if (!user?.hospital) return;
+  const loadCurrentHospitalBeds = useCallback(async () => {
+    if (!user?.hospital) return;
 
-      try {
-        const res = await axiosInstance.get("/hospitals");
-        const hospitals = res.data?.data?.hospitals || res.data?.hospitals || [];
-        const mine = hospitals.find((hospital: any) => hospital?._id === user.hospital);
+    try {
+      const res = await axiosInstance.get("/hospitals");
+      const hospitals = res.data?.data?.hospitals || res.data?.hospitals || [];
+      const mine = hospitals.find((hospital: any) => hospital?._id === user.hospital);
 
-        if (mine?.resources) {
-          setWardAvailability({
-            icuBeds: Number(mine.resources.icuBeds || 0),
-            generalBeds: Number(mine.resources.generalBeds || 0),
-            ventilatorBeds: Number(mine.resources.ventilatorBeds || 0),
-          });
-        }
-      } catch {
-        toast.error("Could not load ward bed counts");
+      if (mine?.resources) {
+        setWardAvailability({
+          icuBeds: Number(mine.resources.icuBeds || 0),
+          generalBeds: Number(mine.resources.generalBeds || 0),
+          ventilatorBeds: Number(mine.resources.ventilatorBeds || 0),
+        });
       }
-    };
-
-    loadCurrentHospitalBeds();
+    } catch {
+      toast.error("Could not load ward bed counts");
+    }
   }, [user?.hospital]);
+
+  useEffect(() => {
+    loadCurrentHospitalBeds();
+  }, [loadCurrentHospitalBeds]);
 
   const onTransferRequested = useCallback((payload: TransferRequestedPayload) => {
     const transfer = payload?.transfer;
@@ -114,6 +118,37 @@ const AdminTransfers = () => {
   useSocket<TransferRequestedPayload>({
     eventName: "transfer-requested",
     onEvent: onTransferRequested,
+  });
+
+  const onBedSlotEvent = useCallback(
+    (payload: BedSlotSocketPayload) => {
+      if (payload?.hospitalId && user?.hospital && payload.hospitalId !== user.hospital) {
+        return;
+      }
+
+      void loadCurrentHospitalBeds();
+    },
+    [loadCurrentHospitalBeds, user?.hospital]
+  );
+
+  useSocket<BedSlotSocketPayload>({
+    eventName: "bed-slot-reserved",
+    onEvent: onBedSlotEvent,
+  });
+
+  useSocket<BedSlotSocketPayload>({
+    eventName: "bed-slot-occupied",
+    onEvent: onBedSlotEvent,
+  });
+
+  useSocket<BedSlotSocketPayload>({
+    eventName: "bed-slot-released",
+    onEvent: onBedSlotEvent,
+  });
+
+  useSocket<BedSlotSocketPayload>({
+    eventName: "bed-slot-status-changed",
+    onEvent: onBedSlotEvent,
   });
 
   const handleAcceptTransfer = async (request: PendingTransfer) => {
