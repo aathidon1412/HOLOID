@@ -2,6 +2,7 @@ const mongoose = require("mongoose");
 const Hospital = require("../models/Hospital");
 const Transfer = require("../models/Transfer");
 const Patient = require("../models/Patient");
+const BedSlot = require("../models/BedSlot");
 const { normalizeBedType, ALLOWED_BED_TYPES } = require("../utils/bedType");
 const { haversineDistanceKm, getRouteMetadata } = require("../services/mapService");
 const { createAuditLog } = require("../services/auditService");
@@ -15,6 +16,13 @@ const {
 } = require("../services/bedReservationService");
 
 const TRANSITIONAL_STATUSES = ["requested", "dispatched", "in_transit", "completed", "cancelled"];
+const SLOT_TYPES = ["ICU", "General", "Ventilator", "Oxygen-supported"];
+
+const SLOT_TO_NORMALIZED = {
+  ICU: "icuBeds",
+  General: "generalBeds",
+  Ventilator: "ventilatorBeds"
+};
 
 const getRequester = (body = {}) => ({
   role: body.role || "doctor",
@@ -128,6 +136,8 @@ const upsertPatient = async ({ patientName, patientId, requiredBedType, fromHosp
   await saveWithSession(patient, session);
   return patient;
 };
+
+const normalizedBedTypeFromSlotType = (slotType) => SLOT_TO_NORMALIZED[slotType] || null;
 
 const searchHospitalsByResource = async (req, res) => {
   const bedType = normalizeBedType(req.query.bedType);
@@ -486,6 +496,381 @@ const trackTransfer = async (req, res) => {
   return res.status(200).json({ transfer });
 };
 
+const listOpenTransfersForHospital = async (req, res) => {
+  const { hospitalId } = req.params;
+
+  if (!mongoose.Types.ObjectId.isValid(hospitalId)) {
+    return res.status(400).json({ message: "hospitalId must be a valid ObjectId" });
+  }
+
+  const transfers = await Transfer.find({
+    toHospital: hospitalId,
+    status: { $in: ["requested", "dispatched", "in_transit"] }
+  })
+    .sort({ createdAt: -1 })
+    .populate("fromHospital", "name region")
+    .populate("toHospital", "name region")
+    .populate("patient", "patientId name age sex status")
+    .populate("reservedBedSlot", "wardName bedType slotLabel status reservedAt occupiedAt")
+    .lean();
+
+  return res.status(200).json({ count: transfers.length, transfers });
+};
+
+const listHospitalBedSlots = async (req, res) => {
+  const { hospitalId } = req.params;
+
+  if (!mongoose.Types.ObjectId.isValid(hospitalId)) {
+    return res.status(400).json({ message: "hospitalId must be a valid ObjectId" });
+  }
+
+  const filter = { hospital: hospitalId };
+
+  if (req.query.status) {
+    const status = String(req.query.status).trim();
+    filter.status = status;
+  }
+
+  if (req.query.wardName) {
+    filter.wardName = String(req.query.wardName).trim();
+  }
+
+  if (req.query.bedType) {
+    const normalized = normalizeBedType(req.query.bedType);
+    const slotType = slotTypeFromBedType(normalized);
+    if (slotType) {
+      filter.bedType = slotType;
+    } else if (SLOT_TYPES.includes(String(req.query.bedType))) {
+      filter.bedType = String(req.query.bedType);
+    }
+  }
+
+  const bedSlots = await BedSlot.find(filter)
+    .sort({ wardName: 1, bedType: 1, slotLabel: 1 })
+    .populate("reservedForPatient", "patientId name age sex status")
+    .populate("reservedForTransfer", "status patientName")
+    .lean();
+
+  return res.status(200).json({ count: bedSlots.length, bedSlots });
+};
+
+const assignPatientToBedSlot = async (req, res) => {
+  const { hospitalId, slotId } = req.params;
+  const { patientName, patientId, patientAge, patientSex, requiredBedType, actor } = req.body;
+
+  if (!mongoose.Types.ObjectId.isValid(hospitalId) || !mongoose.Types.ObjectId.isValid(slotId)) {
+    return res.status(400).json({ message: "hospitalId and slotId must be valid ObjectIds" });
+  }
+
+  if (!patientName) {
+    return res.status(400).json({ message: "patientName is required" });
+  }
+
+  let updatedSlot = null;
+  let updatedPatient = null;
+  let normalizedResourceKey = null;
+
+  try {
+    const result = await runWithOptionalTransaction(async (session) => {
+      const hospital = await withSession(Hospital.findById(hospitalId), session);
+      if (!hospital) {
+        throw new Error("Hospital not found");
+      }
+
+      const slot = await withSession(BedSlot.findOne({ _id: slotId, hospital: hospitalId }), session);
+      if (!slot) {
+        throw new Error("Bed slot not found");
+      }
+
+      if (slot.status !== "Vacant") {
+        throw new Error("Only vacant bed slots can be assigned directly");
+      }
+
+      normalizedResourceKey = normalizedBedTypeFromSlotType(slot.bedType);
+      const patientBedType = normalizeBedType(requiredBedType) || normalizedResourceKey || "generalBeds";
+
+      const patient = await upsertPatient({
+        patientName,
+        patientId,
+        requiredBedType: patientBedType,
+        fromHospitalId: hospital._id,
+        patientAge,
+        patientSex,
+        session
+      });
+
+      patient.currentHospital = hospital._id;
+      patient.status = "admitted";
+      patient.requiredBedType = patientBedType;
+      await saveWithSession(patient, session);
+
+      if (normalizedResourceKey) {
+        const currentAvailable = Number(hospital.resources?.[normalizedResourceKey] || 0);
+        if (currentAvailable <= 0) {
+          throw new Error("No available hospital capacity for this bed type");
+        }
+        hospital.resources[normalizedResourceKey] = currentAvailable - 1;
+        await saveWithSession(hospital, session);
+      }
+
+      slot.status = "Occupied";
+      slot.occupiedAt = new Date();
+      slot.releasedAt = null;
+      slot.reservedAt = null;
+      slot.reservedForPatient = patient._id;
+      slot.reservedForTransfer = null;
+      await saveWithSession(slot, session);
+
+      return { slot, patient };
+    });
+
+    updatedSlot = result.slot;
+    updatedPatient = result.patient;
+  } catch (error) {
+    const message = String(error && error.message ? error.message : "");
+
+    if (message.includes("not found")) {
+      return res.status(404).json({ message });
+    }
+    if (message.includes("vacant") || message.includes("capacity")) {
+      return res.status(409).json({ message });
+    }
+
+    throw error;
+  }
+
+  await createAuditLog({
+    entityType: "bed_slot",
+    entityId: updatedSlot._id,
+    action: "patient_assigned_to_bed",
+    actor: getRequester(actor),
+    metadata: {
+      patientId: updatedPatient._id,
+      patientName: updatedPatient.name,
+      hospitalId,
+      wardName: updatedSlot.wardName,
+      slotLabel: updatedSlot.slotLabel,
+      bedType: normalizedResourceKey || updatedSlot.bedType
+    }
+  });
+
+  return res.status(200).json({
+    bedSlot: updatedSlot,
+    patient: {
+      id: updatedPatient._id,
+      patientId: updatedPatient.patientId,
+      name: updatedPatient.name,
+      age: updatedPatient.age,
+      sex: updatedPatient.sex,
+      status: updatedPatient.status
+    }
+  });
+};
+
+const releaseBedSlot = async (req, res) => {
+  const { hospitalId, slotId } = req.params;
+  const { actor, note } = req.body;
+
+  if (!mongoose.Types.ObjectId.isValid(hospitalId) || !mongoose.Types.ObjectId.isValid(slotId)) {
+    return res.status(400).json({ message: "hospitalId and slotId must be valid ObjectIds" });
+  }
+
+  let releasedSlot = null;
+
+  try {
+    const result = await runWithOptionalTransaction(async (session) => {
+      const hospital = await withSession(Hospital.findById(hospitalId), session);
+      if (!hospital) {
+        throw new Error("Hospital not found");
+      }
+
+      const slot = await withSession(BedSlot.findOne({ _id: slotId, hospital: hospitalId }), session);
+      if (!slot) {
+        throw new Error("Bed slot not found");
+      }
+
+      if (!["Occupied", "Reserved"].includes(slot.status)) {
+        throw new Error("Only occupied or reserved slots can be released");
+      }
+
+      const normalizedResourceKey = normalizedBedTypeFromSlotType(slot.bedType);
+      if (normalizedResourceKey) {
+        hospital.resources[normalizedResourceKey] = Number(hospital.resources?.[normalizedResourceKey] || 0) + 1;
+        await saveWithSession(hospital, session);
+      }
+
+      if (slot.reservedForPatient) {
+        const patient = await withSession(Patient.findById(slot.reservedForPatient), session);
+        if (patient) {
+          patient.currentHospital = null;
+          patient.status = "discharged";
+          await saveWithSession(patient, session);
+        }
+      }
+
+      if (slot.reservedForTransfer) {
+        const transfer = await withSession(Transfer.findById(slot.reservedForTransfer), session);
+        if (transfer && !["completed", "cancelled"].includes(transfer.status)) {
+          transfer.status = "cancelled";
+          transfer.reservationStatus = "released";
+          transfer.timeline.push({
+            status: "cancelled",
+            note: note || "Bed reservation released by bed manager"
+          });
+          await saveWithSession(transfer, session);
+
+          if (transfer.patient) {
+            const transferPatient = await withSession(Patient.findById(transfer.patient), session);
+            if (transferPatient) {
+              transferPatient.status = "cancelled";
+              await saveWithSession(transferPatient, session);
+            }
+          }
+        }
+      }
+
+      slot.status = "Vacant";
+      slot.releasedAt = new Date();
+      slot.occupiedAt = null;
+      slot.reservedAt = null;
+      slot.reservedForPatient = null;
+      slot.reservedForTransfer = null;
+      await saveWithSession(slot, session);
+
+      return slot;
+    });
+
+    releasedSlot = result;
+  } catch (error) {
+    const message = String(error && error.message ? error.message : "");
+    if (message.includes("not found")) {
+      return res.status(404).json({ message });
+    }
+    if (message.includes("Only occupied or reserved")) {
+      return res.status(409).json({ message });
+    }
+    throw error;
+  }
+
+  await createAuditLog({
+    entityType: "bed_slot",
+    entityId: releasedSlot._id,
+    action: "bed_released",
+    actor: getRequester(actor),
+    metadata: {
+      hospitalId,
+      wardName: releasedSlot.wardName,
+      slotLabel: releasedSlot.slotLabel,
+      note: note || ""
+    }
+  });
+
+  return res.status(200).json({ bedSlot: releasedSlot });
+};
+
+const updateBedSlotStatus = async (req, res) => {
+  const { hospitalId, slotId } = req.params;
+  const { status, actor, note } = req.body;
+
+  if (!mongoose.Types.ObjectId.isValid(hospitalId) || !mongoose.Types.ObjectId.isValid(slotId)) {
+    return res.status(400).json({ message: "hospitalId and slotId must be valid ObjectIds" });
+  }
+
+  const nextStatus = String(status || "").trim();
+  if (!["Vacant", "Reserved", "Maintenance", "Unavailable"].includes(nextStatus)) {
+    return res.status(400).json({
+      message: "status must be one of: Vacant, Reserved, Maintenance, Unavailable"
+    });
+  }
+
+  let updatedSlot = null;
+
+  try {
+    const result = await runWithOptionalTransaction(async (session) => {
+      const hospital = await withSession(Hospital.findById(hospitalId), session);
+      if (!hospital) {
+        throw new Error("Hospital not found");
+      }
+
+      const slot = await withSession(BedSlot.findOne({ _id: slotId, hospital: hospitalId }), session);
+      if (!slot) {
+        throw new Error("Bed slot not found");
+      }
+
+      if (slot.status === "Occupied") {
+        throw new Error("Occupied slots must be released before status override");
+      }
+
+      if (slot.status === "Reserved" && nextStatus !== "Vacant") {
+        throw new Error("Reserved slots can only be moved back to Vacant here");
+      }
+
+      const normalizedResourceKey = normalizedBedTypeFromSlotType(slot.bedType);
+      if (normalizedResourceKey) {
+        const wasAvailable = slot.status === "Vacant";
+        const willBeAvailable = nextStatus === "Vacant";
+        if (wasAvailable && !willBeAvailable) {
+          const currentAvailable = Number(hospital.resources?.[normalizedResourceKey] || 0);
+          if (currentAvailable <= 0) {
+            throw new Error("No available hospital capacity for this bed type");
+          }
+          hospital.resources[normalizedResourceKey] = currentAvailable - 1;
+          await saveWithSession(hospital, session);
+        } else if (!wasAvailable && willBeAvailable) {
+          hospital.resources[normalizedResourceKey] = Number(hospital.resources?.[normalizedResourceKey] || 0) + 1;
+          await saveWithSession(hospital, session);
+        }
+      }
+
+      slot.status = nextStatus;
+      if (nextStatus === "Reserved") {
+        slot.reservedAt = new Date();
+        slot.releasedAt = null;
+      }
+      if (nextStatus === "Vacant") {
+        slot.releasedAt = new Date();
+        slot.reservedAt = null;
+        slot.reservedForPatient = null;
+        slot.reservedForTransfer = null;
+      }
+
+      await saveWithSession(slot, session);
+      return slot;
+    });
+
+    updatedSlot = result;
+  } catch (error) {
+    const message = String(error && error.message ? error.message : "");
+    if (message.includes("not found")) {
+      return res.status(404).json({ message });
+    }
+    if (
+      message.includes("Occupied slots") ||
+      message.includes("Reserved slots") ||
+      message.includes("available hospital capacity")
+    ) {
+      return res.status(409).json({ message });
+    }
+    throw error;
+  }
+
+  await createAuditLog({
+    entityType: "bed_slot",
+    entityId: updatedSlot._id,
+    action: "bed_status_updated_manual",
+    actor: getRequester(actor),
+    metadata: {
+      hospitalId,
+      wardName: updatedSlot.wardName,
+      slotLabel: updatedSlot.slotLabel,
+      status: updatedSlot.status,
+      note: note || ""
+    }
+  });
+
+  return res.status(200).json({ bedSlot: updatedSlot });
+};
+
 const getTransferHistory = async (req, res) => {
   const { hospitalId, status } = req.query;
   const filter = {};
@@ -778,6 +1163,11 @@ module.exports = {
   searchHospitalsByResource,
   getNearestHospitalWithRequiredBed,
   requestPatientTransfer,
+  listOpenTransfersForHospital,
+  listHospitalBedSlots,
+  assignPatientToBedSlot,
+  releaseBedSlot,
+  updateBedSlotStatus,
   getTransferHistory,
   trackTransfer,
   updateTransferStatus,
