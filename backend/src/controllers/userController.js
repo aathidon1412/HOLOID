@@ -9,6 +9,7 @@ const { sendActivationEmail } = require("../services/emailService");
 const HOSPITAL_APPROVABLE_ROLES = [
     ROLES.DOCTOR,
     ROLES.BED_MANAGER,
+    ROLES.DATA_ENTRY,
     ROLES.AMBULANCE_DRIVER,
 ];
 

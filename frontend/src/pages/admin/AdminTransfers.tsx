@@ -16,6 +16,8 @@ type PendingTransfer = {
   bedTypeLabel: string;
   bedTypeKey: BedKey;
   requestedAt: string;
+  status: string;
+  dispatchStatus: string;
 };
 
 type TransferHistoryItem = {
@@ -68,6 +70,8 @@ type OpenTransferApiItem = {
   _id?: string;
   patientName?: string;
   requiredBedType?: string;
+  status?: string;
+  dispatchStatus?: string;
   requestedBy?: {
     name?: string;
   };
@@ -107,7 +111,14 @@ const mapTransferToPending = (transfer: OpenTransferApiItem): PendingTransfer =>
   requestedAt: transfer.createdAt
     ? new Date(transfer.createdAt).toLocaleString()
     : new Date().toLocaleString(),
+  status: String(transfer.status || "requested").toLowerCase(),
+  dispatchStatus: String(transfer.dispatchStatus || "unassigned").toLowerCase(),
 });
+
+const isPendingRequest = (transfer: OpenTransferApiItem) => {
+  const transferStatus = String(transfer.status || "").trim().toLowerCase();
+  return transferStatus === "requested";
+};
 
 const mapTransferToHistory = (transfer: TransferHistoryApiItem): TransferHistoryItem => ({
   id: transfer._id || "N/A",
@@ -149,7 +160,8 @@ const AdminTransfers = () => {
     generalBeds: 0,
     ventilatorBeds: 0,
   });
-  const [acceptingTransferId, setAcceptingTransferId] = useState<string | null>(null);
+  const [processingTransferId, setProcessingTransferId] = useState<string | null>(null);
+  const [processingTransferAction, setProcessingTransferAction] = useState<"accept" | "reject" | null>(null);
 
   const loadCurrentHospitalBeds = useCallback(async () => {
     if (!user?.hospital) return;
@@ -204,7 +216,7 @@ const AdminTransfers = () => {
     try {
       const res = await axiosInstance.get(`/logistics/hospitals/${user.hospital}/transfers/open`);
       const transfers: OpenTransferApiItem[] = res?.data?.transfers || [];
-      setPendingTransfers(transfers.map(mapTransferToPending));
+      setPendingTransfers(transfers.filter(isPendingRequest).map(mapTransferToPending));
     } catch {
       toast.error("Could not load pending transfers");
     }
@@ -302,21 +314,37 @@ const AdminTransfers = () => {
     onEvent: onBedSlotEvent,
   });
 
-  const handleAcceptTransfer = async (request: PendingTransfer) => {
+  const handleResolveTransfer = async (request: PendingTransfer, action: "accept" | "reject") => {
     try {
-      setAcceptingTransferId(request.id);
+      setProcessingTransferId(request.id);
+      setProcessingTransferAction(action);
 
-      await axiosInstance.patch(`/logistics/transfer/${request.id}/accept`);
+      if (action === "accept") {
+        await axiosInstance.patch(`/logistics/transfer/${request.id}/accept`);
+      } else {
+        await axiosInstance.patch(`/logistics/transfer/${request.id}`, {
+          status: "rejected",
+          note: "Rejected by destination hospital admin",
+          actor: {
+            role: user?.role || "HOSPITAL_ADMIN",
+            id: user?.id || "",
+            name: user?.name || "",
+          },
+        });
+      }
+
+      setPendingTransfers((prev) => prev.filter((item) => item.id !== request.id));
 
       void loadOpenTransfers();
       void loadTransferHistory();
       void loadCurrentHospitalBeds();
-      toast.success("Transfer accepted");
+      toast.success(action === "accept" ? "Transfer accepted" : "Transfer rejected");
     } catch (err: any) {
-      const message = err?.response?.data?.message || err?.message || "Failed to accept transfer";
+      const message = err?.response?.data?.message || err?.message || `Failed to ${action} transfer`;
       toast.error(message);
     } finally {
-      setAcceptingTransferId(null);
+      setProcessingTransferId(null);
+      setProcessingTransferAction(null);
     }
   };
 
@@ -359,10 +387,18 @@ const AdminTransfers = () => {
                     </div>
                     <Button
                       size="sm"
-                      onClick={() => handleAcceptTransfer(request)}
-                      disabled={acceptingTransferId === request.id}
+                      onClick={() => handleResolveTransfer(request, "accept")}
+                      disabled={processingTransferId === request.id}
                     >
-                      {acceptingTransferId === request.id ? "Accepting..." : "Accept"}
+                      {processingTransferId === request.id && processingTransferAction === "accept" ? "Accepting..." : "Accept"}
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="destructive"
+                      onClick={() => handleResolveTransfer(request, "reject")}
+                      disabled={processingTransferId === request.id}
+                    >
+                      {processingTransferId === request.id && processingTransferAction === "reject" ? "Rejecting..." : "Reject"}
                     </Button>
                   </div>
                 </div>
