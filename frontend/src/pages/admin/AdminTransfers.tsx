@@ -11,6 +11,7 @@ type BedKey = "icuBeds" | "generalBeds" | "ventilatorBeds";
 
 type PendingTransfer = {
   id: string;
+  patientId: string;
   patientName: string;
   fromDoctor: string;
   bedTypeLabel: string;
@@ -21,7 +22,8 @@ type PendingTransfer = {
 };
 
 type TransferHistoryItem = {
-  id: string;
+  transferId: string;
+  patientId: string;
   patientName: string;
   fromDoctor: string;
   fromHospitalName: string;
@@ -68,6 +70,7 @@ type ResourceInventory = {
 
 type OpenTransferApiItem = {
   _id?: string;
+  patientId?: string;
   patientName?: string;
   requiredBedType?: string;
   status?: string;
@@ -80,7 +83,9 @@ type OpenTransferApiItem = {
 
 type TransferHistoryApiItem = {
   _id?: string;
+  patientId?: string;
   patientName?: string;
+  patient?: { patientId?: string };
   requestedBy?: { name?: string };
   requiredBedType?: string;
   status?: string;
@@ -104,6 +109,7 @@ const bedTypeLabel = (value?: string): string => {
 
 const mapTransferToPending = (transfer: OpenTransferApiItem): PendingTransfer => ({
   id: transfer._id || `TR-LIVE-${Date.now()}`,
+  patientId: transfer.patientId || "N/A",
   patientName: transfer.patientName || "Unknown Patient",
   fromDoctor: transfer.requestedBy?.name || "Doctor",
   bedTypeLabel: bedTypeLabel(transfer.requiredBedType),
@@ -121,7 +127,8 @@ const isPendingRequest = (transfer: OpenTransferApiItem) => {
 };
 
 const mapTransferToHistory = (transfer: TransferHistoryApiItem): TransferHistoryItem => ({
-  id: transfer._id || "N/A",
+  transferId: transfer._id || "N/A",
+  patientId: transfer.patientId || transfer.patient?.patientId || "N/A",
   patientName: transfer.patientName || "Unknown Patient",
   fromDoctor: transfer.requestedBy?.name || "Doctor",
   fromHospitalName:
@@ -381,6 +388,7 @@ const AdminTransfers = () => {
                   <div className="flex items-start justify-between gap-3">
                     <div className="space-y-1">
                       <p className="text-sm font-medium text-foreground">{request.patientName}</p>
+                      <p className="text-xs text-muted-foreground">Patient ID: {request.patientId}</p>
                       <p className="text-xs text-muted-foreground">From Doctor: {request.fromDoctor}</p>
                       <p className="text-xs text-muted-foreground">Bed Type: {request.bedTypeLabel}</p>
                       <p className="text-xs text-muted-foreground">Requested: {request.requestedAt}</p>
@@ -419,7 +427,7 @@ const AdminTransfers = () => {
             <table className="w-full text-sm">
               <thead>
                 <tr className="text-left border-b border-border">
-                  <th className="py-2 pr-3 text-muted-foreground font-medium">Transfer ID</th>
+                  <th className="py-2 pr-3 text-muted-foreground font-medium">Patient ID</th>
                   <th className="py-2 pr-3 text-muted-foreground font-medium">Patient</th>
                   <th className="py-2 pr-3 text-muted-foreground font-medium">From Doctor</th>
                   <th className="py-2 pr-3 text-muted-foreground font-medium">From Hospital</th>
@@ -438,8 +446,8 @@ const AdminTransfers = () => {
                   </tr>
                 ) : (
                   transferHistory.map((item) => (
-                    <tr key={item.id} className="border-b border-border/60">
-                      <td className="py-3 pr-3 text-foreground">{item.id}</td>
+                    <tr key={item.transferId} className="border-b border-border/60">
+                      <td className="py-3 pr-3 text-foreground">{item.patientId}</td>
                       <td className="py-3 pr-3 text-foreground">{item.patientName}</td>
                       <td className="py-3 pr-3 text-foreground">{item.fromDoctor}</td>
                       <td className="py-3 pr-3 text-foreground">{item.fromHospitalName}</td>

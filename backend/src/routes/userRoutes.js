@@ -7,11 +7,11 @@ const {
     updateMyProfile,
     changeMyPassword,
     approveUser,
+    rejectUser,
     listPendingUsers,
     listAllUsers,
     toggleUserStatus,
 } = require("../controllers/userController");
-const { approveUser, rejectUser, listPendingUsers, listAllUsers, toggleUserStatus } = require("../controllers/userController");
 const ROLES = require("../utils/roles");
 
 const router = express.Router();

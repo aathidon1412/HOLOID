@@ -19,7 +19,7 @@
 ✔ User management: reject button with reason across all user management endpoints (admin + self-service) @done (4/16/2026, 4:17:53 PM)
 ✔ Doctor login remove quick search,real time data for recent bed activity and transfer history @done (4/16/2026, 4:25:42 PM)
 ☐ Proper notification for critical alerts and transfer events for all roles(in-app only)
-☐ Profile management: allow users to update their profile info and change password (with validation)
-☐ Hospital admin login-user management add role column and filter by role
-☐ Hospital admin login-transfers and ambulance management-pending requests should be disappeared after approval or rejection
+✔ Profile management: allow users to update their profile info and change password (with validation) @done (4/16/2026, 4:41:59 PM)
+✔ Hospital admin login-user management add role column and filter by role @done (4/16/2026, 4:42:00 PM)
+✔ Hospital admin login-transfers and ambulance management-pending requests should be disappeared after approval or rejection @done (4/16/2026, 4:42:03 PM)
 ✔ Remove secure access portal @done (4/16/2026, 4:27:21 PM)
