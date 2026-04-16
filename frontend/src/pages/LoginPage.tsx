@@ -170,7 +170,11 @@ const LoginPage = () => {
         <div className="w-full max-w-md space-y-8">
           <div className="text-center space-y-2">
             <img src={holoidLogo} alt="HOLOID" className="h-12 mx-auto lg:hidden" />
-            <h1 className="text-2xl font-bold text-foreground">Secure Access Portal</h1>
+            <h1 className="text-2xl md:text-3xl font-extrabold leading-tight tracking-tight text-foreground">
+              <span className="bg-gradient-to-r from-primary via-foreground to-primary bg-clip-text text-transparent">HOLOID</span>
+              <br />
+              <span className="text-base md:text-lg font-semibold text-muted-foreground">Hospital Bed and Resource Management System</span>
+            </h1>
             <p className="text-sm text-muted-foreground">
               {mode === "signin" ? "Sign in to access the system" : "Create your account"}
             </p>

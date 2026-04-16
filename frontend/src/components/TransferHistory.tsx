@@ -120,8 +120,33 @@ const TransferHistory = () => {
     onEvent: handleRealtimeTransferEvent,
   });
 
+  useSocket<{ hospitalId?: string }>({
+    eventName: "dispatch-assigned",
+    onEvent: handleRealtimeTransferEvent,
+  });
+
+  useSocket<{ hospitalId?: string }>({
+    eventName: "dispatch-responded",
+    onEvent: handleRealtimeTransferEvent,
+  });
+
+  useSocket<{ hospitalId?: string }>({
+    eventName: "dispatch-progress-updated",
+    onEvent: handleRealtimeTransferEvent,
+  });
+
   useEffect(() => {
     void fetchTransferHistory();
+  }, [fetchTransferHistory]);
+
+  useEffect(() => {
+    const intervalId = window.setInterval(() => {
+      void fetchTransferHistory();
+    }, 10000);
+
+    return () => {
+      window.clearInterval(intervalId);
+    };
   }, [fetchTransferHistory]);
 
   if (isLoading) {

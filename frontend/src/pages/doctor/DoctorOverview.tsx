@@ -1,5 +1,4 @@
 import { useCallback, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 
@@ -8,16 +7,9 @@ import MetricCard from "@/components/MetricCard";
 import OccupancyBar from "@/components/OccupancyBar";
 import LiveIndicator from "@/components/LiveIndicator";
 import { Bed, Wind, HeartPulse, Droplets } from "lucide-react";
-import { Button } from "@/components/ui/button";
 import { useAuth } from "@/contexts/AuthContext";
 import { useSocket } from "@/hooks/useSocket";
 import axiosInstance from "@/api/axiosInstance";
-
-const defaultActivity = [
-  { time: "10:34 AM", msg: "Ward A ICU: 1 bed now occupied" },
-  { time: "10:21 AM", msg: "Ward B General: 2 beds cleared to vacant" },
-  { time: "09:55 AM", msg: "Ward C Ventilator: 1 moved to maintenance" },
-];
 
 type BedType = "ICU" | "General" | "Ventilator" | "Oxygen-supported";
 
@@ -60,11 +52,9 @@ type TransferEventPayload = {
 };
 
 const DoctorOverview = () => {
-  const navigate = useNavigate();
   const { user } = useAuth();
   const queryClient = useQueryClient();
-  const [activity, setActivity] = useState(defaultActivity);
-  const [selectedBedCategory, setSelectedBedCategory] = useState<"icu" | "general" | "ventilator" | "oxygen">("icu");
+  const [activity, setActivity] = useState<Array<{ time: string; msg: string }>>([]);
 
   const { data: inventory, isLoading } = useQuery({
     queryKey: ["resources", user?.hospital],
@@ -226,15 +216,6 @@ const DoctorOverview = () => {
     onEvent: handleTransferStatusUpdated,
   });
 
-  const quickSearchLabelMap = {
-    icu: "ICU",
-    general: "General",
-    ventilator: "Ventilator",
-    oxygen: "Oxygen",
-  };
-
-  const quickSearchAvailable = metrics[selectedBedCategory].vacant;
-
   if (isLoading) {
     return (
       <div>
@@ -274,32 +255,18 @@ const DoctorOverview = () => {
       </div>
 
       <div className="rounded-lg border border-border bg-card p-5 space-y-3">
-        <h3 className="text-sm font-semibold text-foreground">Quick Search</h3>
-        <div className="flex items-center gap-4">
-          <select
-            value={selectedBedCategory}
-            onChange={(event) => setSelectedBedCategory(event.target.value as "icu" | "general" | "ventilator" | "oxygen")}
-            className="rounded-md border border-border bg-secondary px-3 py-2 text-sm text-foreground"
-          >
-            <option value="icu">ICU</option>
-            <option value="general">General</option>
-            <option value="ventilator">Ventilator</option>
-            <option value="oxygen">Oxygen</option>
-          </select>
-          <span className="text-sm text-status-vacant">{quickSearchLabelMap[selectedBedCategory]}: {quickSearchAvailable} beds available</span>
-          <Button size="sm" onClick={() => navigate("/doctor/request-transfer")}>Request Transfer</Button>
-        </div>
-      </div>
-
-      <div className="rounded-lg border border-border bg-card p-5 space-y-3">
         <h3 className="text-sm font-semibold text-foreground">Recent Bed Activity</h3>
-        {activity.map((a, i) => (
-          <div key={i} className="flex items-center gap-3 text-xs text-muted-foreground">
-            <span className="font-medium text-foreground">{a.time}</span>
-            <span>-</span>
-            <span>{a.msg}</span>
-          </div>
-        ))}
+        {activity.length === 0 ? (
+          <p className="text-xs text-muted-foreground">Waiting for live activity updates...</p>
+        ) : (
+          activity.map((a, i) => (
+            <div key={`${a.time}-${i}`} className="flex items-center gap-3 text-xs text-muted-foreground">
+              <span className="font-medium text-foreground">{a.time}</span>
+              <span>-</span>
+              <span>{a.msg}</span>
+            </div>
+          ))
+        )}
       </div>
 
       <p className="text-xs text-muted-foreground">
