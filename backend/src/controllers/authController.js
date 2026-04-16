@@ -145,6 +145,16 @@ const login = catchAsync(async (req, res) => {
 
 	if (!user.isActive) {
 		if (user.isApproved === false) {
+			if (user.rejectedAt) {
+				const reason = String(user.rejectionReason || "").trim();
+				throw new ApiError(
+					403,
+					reason
+						? `Account registration was rejected. Reason: ${reason}`
+						: "Account registration was rejected.",
+					"ACCOUNT_REJECTED"
+				);
+			}
 			throw new ApiError(403, "Account pending approval. Please wait for approval.", "ACCOUNT_PENDING_APPROVAL");
 		}
 		throw new ApiError(403, "Account not activated. Please use the activation link.", "ACCOUNT_INACTIVE");

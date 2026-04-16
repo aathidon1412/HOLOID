@@ -120,6 +120,22 @@ const changeMyPassword = catchAsync(async (req, res) => {
 
     return res.status(200).json(new ApiResponse(200, null, "Password changed successfully"));
 });
+const ensureApprovalPermission = ({ approver, user }) => {
+    // GOV can approve/reject HOSPITAL_ADMIN
+    if (approver.role === ROLES.GOVERNMENT_OFFICIAL && user.role === ROLES.HOSPITAL_ADMIN) {
+        return;
+    }
+
+    if (approver.role === ROLES.HOSPITAL_ADMIN && HOSPITAL_APPROVABLE_ROLES.includes(user.role)) {
+        // hospital admins may approve/reject operational users for their own hospital
+        if (!approver.hospital || !user.hospital || approver.hospital.toString() !== user.hospital.toString()) {
+            throw new ApiError(403, "Cannot manage user from another hospital", "FORBIDDEN");
+        }
+        return;
+    }
+
+    throw new ApiError(403, "Insufficient permissions to manage this user", "FORBIDDEN");
+};
 
 const approveUser = catchAsync(async (req, res) => {
     const approver = req.user;
@@ -134,22 +150,15 @@ const approveUser = catchAsync(async (req, res) => {
             .json(new ApiResponse(400, null, "User is already approved."));
     }
 
-    // GOV can approve HOSPITAL_ADMIN
-    if (approver.role === ROLES.GOVERNMENT_OFFICIAL && user.role === ROLES.HOSPITAL_ADMIN) {
-        // allowed
-    } else if (approver.role === ROLES.HOSPITAL_ADMIN && HOSPITAL_APPROVABLE_ROLES.includes(user.role)) {
-        // hospital admins may approve operational users for their own hospital
-        if (!approver.hospital || !user.hospital || approver.hospital.toString() !== user.hospital.toString()) {
-            throw new ApiError(403, "Cannot approve user from another hospital", "FORBIDDEN");
-        }
-    } else {
-        throw new ApiError(403, "Insufficient permissions to approve this user", "FORBIDDEN");
-    }
+    ensureApprovalPermission({ approver, user });
 
     user.isApproved = true;
     // `req.user` produced by authenticate contains `id` (string) and `hospital`.
     user.approvedBy = approver.id || approver._id || null;
     user.approvedAt = new Date();
+    user.rejectedBy = null;
+    user.rejectedAt = null;
+    user.rejectionReason = "";
     await user.save();
 
     // send activation email now that user is approved
@@ -168,10 +177,55 @@ const approveUser = catchAsync(async (req, res) => {
         .json(new ApiResponse(200, { activationEmailSent: !emailResult.skipped }, "User approved and activation email sent (if mailer available)."));
 });
 
+const rejectUser = catchAsync(async (req, res) => {
+    const approver = req.user;
+    const userId = req.params.id;
+    const rejectionReason = String(req.body?.reason || "").trim();
+
+    if (!rejectionReason) {
+        throw new ApiError(400, "Rejection reason is required", "MISSING_REJECTION_REASON");
+    }
+
+    const user = await User.findById(userId);
+    if (!user) throw new ApiError(404, "User not found", "USER_NOT_FOUND");
+
+    if (user.isApproved) {
+        throw new ApiError(409, "Approved users cannot be rejected", "INVALID_STATE");
+    }
+
+    if (user.rejectedAt) {
+        throw new ApiError(400, "User is already rejected", "USER_ALREADY_REJECTED");
+    }
+
+    ensureApprovalPermission({ approver, user });
+
+    user.isApproved = false;
+    user.isActive = false;
+    user.approvedBy = null;
+    user.approvedAt = null;
+    user.rejectedBy = approver.id || approver._id || null;
+    user.rejectedAt = new Date();
+    user.rejectionReason = rejectionReason;
+    await user.save();
+
+    return res
+        .status(200)
+        .json(
+            new ApiResponse(
+                200,
+                {
+                    rejectedAt: user.rejectedAt,
+                    rejectionReason: user.rejectionReason,
+                },
+                "User rejected successfully"
+            )
+        );
+});
+
 const listPendingUsers = catchAsync(async (req, res) => {
     const requester = req.user;
 
-    let filter = { isApproved: false };
+    let filter = { isApproved: false, rejectedAt: null };
 
     if (requester.role === ROLES.GOVERNMENT_OFFICIAL) {
         // GOV sees pending hospital admins
@@ -212,7 +266,7 @@ const listAllUsers = catchAsync(async (req, res) => {
 
     const users = await User.find(filter)
         .populate("hospital", "name")
-        .select("_id name email role isApproved isActive lastLoginAt createdAt")
+        .select("_id name email role isApproved isActive lastLoginAt createdAt rejectedAt rejectionReason")
         .lean();
         
         
@@ -255,6 +309,7 @@ module.exports = {
     updateMyProfile,
     changeMyPassword,
     approveUser,
+    rejectUser,
     listPendingUsers,
     listAllUsers,
     toggleUserStatus,

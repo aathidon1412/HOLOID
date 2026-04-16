@@ -11,6 +11,7 @@ const {
     listAllUsers,
     toggleUserStatus,
 } = require("../controllers/userController");
+const { approveUser, rejectUser, listPendingUsers, listAllUsers, toggleUserStatus } = require("../controllers/userController");
 const ROLES = require("../utils/roles");
 
 const router = express.Router();
@@ -66,6 +67,14 @@ router.post(
     authenticate,
     authorizeRoles(ROLES.GOVERNMENT_OFFICIAL, ROLES.HOSPITAL_ADMIN),
     approveUser
+);
+
+// Reject a pending user with reason (gov rejects hospital admins, hospital admin rejects operational roles)
+router.post(
+    "/:id/reject",
+    authenticate,
+    authorizeRoles(ROLES.GOVERNMENT_OFFICIAL, ROLES.HOSPITAL_ADMIN),
+    rejectUser
 );
 
 // List pending users for approval
