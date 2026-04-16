@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth, UserRole } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
@@ -31,6 +31,7 @@ const LoginPage = () => {
   const [error, setError] = useState<string>("");
   const [postRegisterMessage, setPostRegisterMessage] = useState<string>("");
   const [hospitals, setHospitals] = useState<Array<{ id: string; name: string }>>([]);
+  const [isLoadingHospitals, setIsLoadingHospitals] = useState(false);
 
   const handleSignIn = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -87,15 +88,17 @@ const LoginPage = () => {
   };
 
   // Fetch hospitals for dropdown when role requires them
-  useMemo(() => {
+  useEffect(() => {
     const needsHospital = role !== "GOVERNMENT_OFFICIAL";
     if (!needsHospital) {
       setHospitals([]);
+      setHospitalId("");
       return;
     }
 
     let cancelled = false;
     (async () => {
+      setIsLoadingHospitals(true);
       try {
         const res = await (await import("@/lib/api")).apiRequest<any>(`/hospitals/list`);
         if (!cancelled && res && res.data && Array.isArray(res.data.hospitals)) {
@@ -104,7 +107,13 @@ const LoginPage = () => {
           );
         }
       } catch (e) {
-        // ignore — keep hospitals empty so user can paste an id
+        if (!cancelled) {
+          setHospitals([]);
+        }
+      } finally {
+        if (!cancelled) {
+          setIsLoadingHospitals(false);
+        }
       }
     })();
 
@@ -229,29 +238,29 @@ const LoginPage = () => {
               {role !== "GOVERNMENT_OFFICIAL" && (
                 <div className="space-y-2">
                   <Label htmlFor="hospitalId">Hospital</Label>
-                  {hospitals.length > 0 ? (
-                    <select
-                      id="hospitalId"
-                      value={hospitalId}
-                      onChange={(e) => setHospitalId(e.target.value)}
-                      className="w-full rounded-md border border-border bg-secondary px-3 py-2 text-sm text-foreground"
-                    >
+                  <select
+                    id="hospitalId"
+                    value={hospitalId}
+                    onChange={(e) => setHospitalId(e.target.value)}
+                    className="w-full rounded-md border border-border bg-secondary px-3 py-2 text-sm text-foreground"
+                  >
+                    {isLoadingHospitals ? (
+                      <option value="" disabled>
+                        Loading hospitals...
+                      </option>
+                    ) : hospitals.length === 0 ? (
+                      <option value="" disabled>
+                        No hospitals available
+                      </option>
+                    ) : (
                       <option value="">Select hospital (required for this role)</option>
-                      {hospitals.map((h) => (
-                        <option key={h.id} value={h.id}>
-                          {h.name}
-                        </option>
-                      ))}
-                    </select>
-                  ) : (
-                    <Input
-                      id="hospitalId"
-                      placeholder="MongoDB hospitalId or leave blank"
-                      value={hospitalId}
-                      onChange={(e) => setHospitalId(e.target.value)}
-                      className="bg-secondary border-border"
-                    />
-                  )}
+                    )}
+                    {hospitals.map((h) => (
+                      <option key={h.id} value={h.id}>
+                        {h.name}
+                      </option>
+                    ))}
+                  </select>
                 </div>
               )}
               <Button type="submit" className="w-full" disabled={isWorking}>

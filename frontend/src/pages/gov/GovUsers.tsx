@@ -16,6 +16,8 @@ interface UserModel {
   role: string;
   isApproved: boolean;
   isActive: boolean;
+  rejectedAt?: string;
+  rejectionReason?: string;
   hospital?: { _id: string; name: string };
   lastLoginAt?: string;
   createdAt: string;
@@ -52,6 +54,23 @@ const GovUsers = () => {
     }
   });
 
+  const rejectMutation = useMutation({
+    mutationFn: async ({ id, reason }: { id: string; reason: string }) => {
+      await apiRequest(`/users/${id}/reject`, {
+        method: "POST",
+        auth: true,
+        body: { reason },
+      });
+    },
+    onSuccess: () => {
+      toast.success("User rejected successfully");
+      queryClient.invalidateQueries({ queryKey: ["all-users"] });
+    },
+    onError: (err: any) => {
+      toast.error(err.message || "Failed to reject user");
+    }
+  });
+
   const toggleStatusMutation = useMutation({
     mutationFn: async ({ id, isActive }: { id: string; isActive: boolean }) => {
       await apiRequest(`/users/${id}/status`, { method: "PUT", auth: true, body: { isActive } });
@@ -76,7 +95,12 @@ const GovUsers = () => {
     const matchesRole = roleFilter === "All Roles" || roleFilter.toUpperCase() === displayRole.toUpperCase();
 
     // Status filter
-    let statusText = u.isApproved ? (u.isActive ? "Active" : "Deactivated") : "Pending";
+    let statusText = "Pending";
+    if (u.rejectedAt) {
+      statusText = "Rejected";
+    } else if (u.isApproved) {
+      statusText = u.isActive ? "Active" : "Deactivated";
+    }
     const matchesStatus = statusFilter === "All Status" || statusFilter === statusText;
 
     return matchesSearch && matchesRole && matchesStatus;
@@ -106,6 +130,7 @@ const GovUsers = () => {
             <option>All Status</option>
             <option>Active</option>
             <option>Pending</option>
+            <option>Rejected</option>
             <option>Deactivated</option>
           </select>
           <input 
@@ -142,15 +167,23 @@ const GovUsers = () => {
                  let statusLabel = "Pending";
                  let statusType = "warning"; // warning maps to yellow/pending
                  
-                 if (u.isApproved) {
+                  if (u.rejectedAt) {
+                    statusLabel = "Rejected";
+                    statusType = "critical";
+                  } else if (u.isApproved) {
                     statusLabel = u.isActive ? "Active" : "Deactivated";
                     statusType = u.isActive ? "vacant" : "critical"; // vacant = green, critical = red
                  }
 
-                 const canApprove = (!u.isApproved) && (
+                  const canApprove = (!u.isApproved) && !u.rejectedAt && (
                     (isGov && u.role === "HOSPITAL_ADMIN") ||
                     (isAdmin && u.role === "DOCTOR")
                  );
+
+                  const canReject = (!u.isApproved) && !u.rejectedAt && (
+                    (isGov && u.role === "HOSPITAL_ADMIN") ||
+                    (isAdmin && u.role === "DOCTOR")
+                  );
 
                  const canToggleStatus = u.isApproved && (
                     (isGov) || (isAdmin && u.role === "DOCTOR")
@@ -171,9 +204,27 @@ const GovUsers = () => {
                           variant="outline" 
                           size="sm" 
                           onClick={() => approveMutation.mutate(u._id)}
-                          disabled={approveMutation.isPending}
+                          disabled={approveMutation.isPending || rejectMutation.isPending}
                         >
                           {approveMutation.isPending ? <Loader2 className="animate-spin w-4 h-4" /> : "Approve"}
+                        </Button>
+                      )}
+
+                      {canReject && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            const reason = window.prompt(`Enter rejection reason for ${u.name}:`, "");
+                            if (!reason || !reason.trim()) {
+                              toast.error("Rejection reason is required");
+                              return;
+                            }
+                            rejectMutation.mutate({ id: u._id, reason: reason.trim() });
+                          }}
+                          disabled={approveMutation.isPending || rejectMutation.isPending}
+                        >
+                          {rejectMutation.isPending ? <Loader2 className="animate-spin w-4 h-4" /> : "Reject"}
                         </Button>
                       )}
                       
@@ -182,7 +233,7 @@ const GovUsers = () => {
                           variant={u.isActive ? "destructive" : "default"} 
                           size="sm" 
                           onClick={() => toggleStatusMutation.mutate({ id: u._id, isActive: !u.isActive })}
-                          disabled={toggleStatusMutation.isPending}
+                          disabled={toggleStatusMutation.isPending || rejectMutation.isPending}
                         >
                           {toggleStatusMutation.isPending ? <Loader2 className="animate-spin w-4 h-4" /> : (u.isActive ? "Suspend" : "Activate")}
                         </Button>
