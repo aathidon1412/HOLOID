@@ -5,6 +5,7 @@ const ROLES = require("../utils/roles");
 const {
   searchHospitalsByResource,
   getNearestHospitalWithRequiredBed,
+  lookupPatientByPatientId,
   requestPatientTransfer,
   listOpenTransfersForHospital,
   listHospitalBedSlots,
@@ -29,18 +30,81 @@ const router = express.Router();
 
 router.get("/hospitals/search", searchHospitalsByResource);
 router.get("/hospitals/nearest", getNearestHospitalWithRequiredBed);
-router.get("/history", getTransferHistory);
-router.post("/transfer", requestPatientTransfer);
-router.post("/transfers", requestPatientTransfer);
+router.get(
+  "/patients/lookup",
+  authenticate,
+  authorizeRoles(
+    ROLES.DOCTOR,
+    ROLES.HOSPITAL_ADMIN,
+    ROLES.BED_MANAGER,
+    ROLES.DATA_ENTRY,
+    ROLES.GOVERNMENT_OFFICIAL
+  ),
+  lookupPatientByPatientId
+);
+router.get("/history", authenticate, getTransferHistory);
+router.post(
+  "/transfer",
+  authenticate,
+  authorizeRoles(
+    ROLES.DOCTOR,
+    ROLES.HOSPITAL_ADMIN,
+    ROLES.BED_MANAGER,
+    ROLES.DATA_ENTRY,
+    ROLES.GOVERNMENT_OFFICIAL
+  ),
+  requestPatientTransfer
+);
+router.post(
+  "/transfers",
+  authenticate,
+  authorizeRoles(
+    ROLES.DOCTOR,
+    ROLES.HOSPITAL_ADMIN,
+    ROLES.BED_MANAGER,
+    ROLES.DATA_ENTRY,
+    ROLES.GOVERNMENT_OFFICIAL
+  ),
+  requestPatientTransfer
+);
 router.get("/transfers/:transferId", trackTransfer);
-router.patch("/transfer/:transferId/accept", (req, _res, next) => {
-  req.body = { ...(req.body || {}), status: "Accepted" };
-  next();
-});
-router.patch("/transfer/:transferId", updateTransferStatus);
-router.patch("/transfers/:transferId/status", updateTransferStatus);
+router.patch(
+  "/transfer/:transferId/accept",
+  authenticate,
+  authorizeRoles(ROLES.HOSPITAL_ADMIN, ROLES.GOVERNMENT_OFFICIAL),
+  (req, _res, next) => {
+    req.body = {
+      ...(req.body || {}),
+      status: "Accepted",
+      actor: {
+        role: req.user?.role || "HOSPITAL_ADMIN",
+        id: req.user?.id || "",
+        name: req.user?.name || "",
+      },
+    };
+    next();
+  },
+  updateTransferStatus
+);
+router.patch(
+  "/transfer/:transferId",
+  authenticate,
+  authorizeRoles(ROLES.HOSPITAL_ADMIN, ROLES.BED_MANAGER, ROLES.GOVERNMENT_OFFICIAL),
+  updateTransferStatus
+);
+router.patch(
+  "/transfers/:transferId/status",
+  authenticate,
+  authorizeRoles(ROLES.HOSPITAL_ADMIN, ROLES.BED_MANAGER, ROLES.GOVERNMENT_OFFICIAL),
+  updateTransferStatus
+);
 router.patch("/hospitals/:hospitalId/resources", updateHospitalResources);
-router.get("/hospitals/:hospitalId/transfers/open", listOpenTransfersForHospital);
+router.get(
+  "/hospitals/:hospitalId/transfers/open",
+  authenticate,
+  authorizeRoles(ROLES.HOSPITAL_ADMIN, ROLES.BED_MANAGER, ROLES.DOCTOR, ROLES.GOVERNMENT_OFFICIAL),
+  listOpenTransfersForHospital
+);
 router.get("/hospitals/:hospitalId/bed-slots", listHospitalBedSlots);
 router.post("/hospitals/:hospitalId/bed-slots/:slotId/assign", assignPatientToBedSlot);
 router.patch("/hospitals/:hospitalId/bed-slots/:slotId/release", releaseBedSlot);

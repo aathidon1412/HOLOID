@@ -25,17 +25,35 @@ export class ApiClientError extends Error {
 }
 
 const DEFAULT_BASE_URL = "http://localhost:5000/api/v1";
+const TOKEN_STORAGE_KEY = "holoid_access_token";
 
 export const API_BASE_URL =
   (import.meta as any).env?.VITE_API_URL?.toString?.() || DEFAULT_BASE_URL;
 
-function getToken() {
-  return localStorage.getItem("holoid_access_token");
+export function getToken() {
+  const sessionToken = sessionStorage.getItem(TOKEN_STORAGE_KEY);
+  if (sessionToken) return sessionToken;
+
+  const legacyToken = localStorage.getItem(TOKEN_STORAGE_KEY);
+  if (legacyToken) {
+    // Migrate legacy shared token storage to per-tab storage.
+    sessionStorage.setItem(TOKEN_STORAGE_KEY, legacyToken);
+    localStorage.removeItem(TOKEN_STORAGE_KEY);
+    return legacyToken;
+  }
+
+  return null;
 }
 
 export function setToken(token: string | null) {
-  if (!token) localStorage.removeItem("holoid_access_token");
-  else localStorage.setItem("holoid_access_token", token);
+  if (!token) {
+    sessionStorage.removeItem(TOKEN_STORAGE_KEY);
+    localStorage.removeItem(TOKEN_STORAGE_KEY);
+    return;
+  }
+
+  sessionStorage.setItem(TOKEN_STORAGE_KEY, token);
+  localStorage.removeItem(TOKEN_STORAGE_KEY);
 }
 
 export async function apiRequest<T>(

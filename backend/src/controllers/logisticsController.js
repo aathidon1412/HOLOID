@@ -3,6 +3,7 @@ const Hospital = require("../models/Hospital");
 const Transfer = require("../models/Transfer");
 const Patient = require("../models/Patient");
 const BedSlot = require("../models/BedSlot");
+const Resource = require("../models/Resource");
 const User = require("../models/User");
 const Ambulance = require("../models/Ambulance");
 const { normalizeBedType, ALLOWED_BED_TYPES } = require("../utils/bedType");
@@ -12,6 +13,7 @@ const { sendCriticalAlertEmail, sendTransferEventEmail } = require("../services/
 const { sendPushToUser } = require("../services/pushService");
 const ROLES = require("../utils/roles");
 const {
+  ensureBedSlotsInitialized,
   reserveBedSlot,
   occupyReservedBedSlot,
   releaseReservedBedSlot,
@@ -275,6 +277,70 @@ const syncHospitalAmbulanceAvailability = async ({ hospitalId, session }) => {
   await saveWithSession(hospital, session);
 };
 
+const syncResourceInventoryFromBedSlots = async ({ hospitalId, session }) => {
+  if (!hospitalId) return;
+
+  const hospital = await withSession(Hospital.findById(hospitalId), session);
+  if (!hospital) return;
+
+  const slotDocs = await withSession(BedSlot.find({ hospital: hospitalId }).lean(), session);
+  if (!slotDocs.length) return;
+
+  const wardMap = new Map();
+
+  for (const slot of slotDocs) {
+    const wardName = slot.wardName || "Default Ward";
+    if (!wardMap.has(wardName)) {
+      wardMap.set(wardName, new Map());
+    }
+
+    const bedMap = wardMap.get(wardName);
+    const pairKey = `${slot.bedType}:${slot.status}`;
+
+    if (!bedMap.has(pairKey)) {
+      bedMap.set(pairKey, {
+        type: slot.bedType,
+        status: slot.status,
+        count: 0
+      });
+    }
+
+    bedMap.get(pairKey).count += 1;
+  }
+
+  const wards = Array.from(wardMap.entries())
+    .sort((a, b) => a[0].localeCompare(b[0]))
+    .map(([wardName, bedMap]) => ({
+      wardName,
+      beds: Array.from(bedMap.values()).sort((a, b) => {
+        if (a.type === b.type) return a.status.localeCompare(b.status);
+        return a.type.localeCompare(b.type);
+      })
+    }));
+
+  const region = hospital.region || hospital.location?.state || "UNKNOWN";
+
+  const existingResource = await withSession(Resource.findOne({ hospital: hospitalId }), session);
+  if (!existingResource) {
+    const created = await Resource.create(
+      [
+        {
+          hospital: hospitalId,
+          region,
+          wards
+        }
+      ],
+      sessionOpts(session)
+    );
+    return created[0];
+  }
+
+  existingResource.region = region;
+  existingResource.wards = wards;
+  await saveWithSession(existingResource, session);
+  return existingResource;
+};
+
 const movingWorkflowStatuses = new Set(["en_route", "in_transit"]);
 
 const getAdaptiveCadenceSec = ({ isMoving, workflowStatus }) => {
@@ -332,6 +398,59 @@ const notifyDriverDispatchChannels = async ({ transfer, driver, note }) => {
       route: transfer.route
     });
   }
+};
+
+const lookupPatientByPatientId = async (req, res) => {
+  const requestedPatientId = String(req.query.patientId || "").trim();
+  const requestedHospitalId = String(req.query.hospitalId || "").trim();
+
+  if (!requestedPatientId) {
+    return res.status(400).json({ message: "patientId is required" });
+  }
+
+  if (requestedHospitalId && !mongoose.Types.ObjectId.isValid(requestedHospitalId)) {
+    return res.status(400).json({ message: "hospitalId must be a valid ObjectId" });
+  }
+
+  const callerHospitalId = req.user?.hospital ? String(req.user.hospital) : "";
+  const isGovernmentUser = req.user?.role === ROLES.GOVERNMENT_OFFICIAL;
+
+  if (!isGovernmentUser && requestedHospitalId && callerHospitalId && requestedHospitalId !== callerHospitalId) {
+    return res.status(403).json({ message: "Insufficient permissions for this hospital" });
+  }
+
+  const scopedHospitalId = requestedHospitalId || callerHospitalId;
+
+  const filter = {
+    patientId: requestedPatientId,
+  };
+
+  if (scopedHospitalId) {
+    filter.currentHospital = scopedHospitalId;
+  }
+
+  const patient = await Patient.findOne(filter)
+    .sort({ updatedAt: -1 })
+    .populate("currentHospital", "name region")
+    .lean();
+
+  if (!patient) {
+    return res.status(404).json({ message: "Patient not found for the provided patientId" });
+  }
+
+  return res.status(200).json({
+    patient: {
+      _id: patient._id,
+      patientId: patient.patientId,
+      name: patient.name,
+      age: patient.age,
+      sex: patient.sex,
+      requiredBedType: patient.requiredBedType,
+      status: patient.status,
+      currentHospital: patient.currentHospital,
+      updatedAt: patient.updatedAt,
+    },
+  });
 };
 
 const searchHospitalsByResource = async (req, res) => {
@@ -441,13 +560,69 @@ const requestPatientTransfer = async (req, res) => {
     notificationEmails
   } = req.body;
 
-  if (!patientName || !requiredBedType || !fromHospitalId) {
+  if (!fromHospitalId) {
     return res.status(400).json({
-      message: "patientName, requiredBedType and fromHospitalId are required"
+      message: "fromHospitalId is required"
     });
   }
 
-  const normalizedBedType = normalizeBedType(requiredBedType);
+  if (!mongoose.Types.ObjectId.isValid(fromHospitalId)) {
+    return res.status(400).json({ message: "fromHospitalId must be a valid ObjectId" });
+  }
+
+  if (
+    req.user &&
+    req.user.role !== ROLES.GOVERNMENT_OFFICIAL &&
+    (!req.user.hospital || String(req.user.hospital) !== String(fromHospitalId))
+  ) {
+    return res.status(403).json({ message: "You can only request transfers from your own hospital" });
+  }
+
+  const requestedPatientId = String(patientId || "").trim();
+  let resolvedPatientName = String(patientName || "").trim();
+  let resolvedPatientAge = patientAge;
+  let resolvedPatientSex = patientSex;
+  let normalizedBedType = normalizeBedType(requiredBedType);
+
+  if (requestedPatientId) {
+    const existingPatient = await Patient.findOne({ patientId: requestedPatientId })
+      .sort({ updatedAt: -1 })
+      .lean();
+
+    if (existingPatient) {
+      if (!resolvedPatientName) {
+        resolvedPatientName = existingPatient.name;
+      }
+
+      if (!requiredBedType) {
+        normalizedBedType = normalizeBedType(existingPatient.requiredBedType);
+      }
+
+      if (resolvedPatientAge === undefined || resolvedPatientAge === null || resolvedPatientAge === "") {
+        resolvedPatientAge = existingPatient.age;
+      }
+
+      if (!resolvedPatientSex) {
+        resolvedPatientSex = existingPatient.sex;
+      }
+
+      if (
+        existingPatient.currentHospital &&
+        String(existingPatient.currentHospital) !== String(fromHospitalId)
+      ) {
+        return res.status(409).json({
+          message: "Patient is currently linked to a different hospital",
+        });
+      }
+    }
+  }
+
+  if (!resolvedPatientName) {
+    return res.status(400).json({
+      message: "Provide patientName or a valid patientId from database",
+    });
+  }
+
   if (!ALLOWED_BED_TYPES.includes(normalizedBedType)) {
     return res.status(400).json({ message: "Invalid requiredBedType" });
   }
@@ -468,6 +643,11 @@ const requestPatientTransfer = async (req, res) => {
         throw new Error("fromHospital not found");
       }
 
+      const requestedSlotType = slotTypeFromBedType(normalizedBedType);
+      if (!requestedSlotType) {
+        throw new Error("Invalid requiredBedType");
+      }
+
       let toHospital = null;
       const destinationHospitalId = toHospitalId || targetHospitalId;
 
@@ -476,11 +656,25 @@ const requestPatientTransfer = async (req, res) => {
         if (!toHospital) {
           throw new Error("toHospital not found");
         }
+
+        await ensureBedSlotsInitialized({ hospitalId: toHospital._id, session });
+
+        const selectedHospitalVacantCount = await withSession(
+          BedSlot.countDocuments({
+            hospital: toHospital._id,
+            bedType: requestedSlotType,
+            status: "Vacant"
+          }),
+          session
+        );
+
+        if (selectedHospitalVacantCount <= 0) {
+          throw new Error("Selected destination hospital has no vacant bed in requested category");
+        }
       } else {
         const candidateFilter = {
           _id: { $ne: fromHospital._id },
-          active: true,
-          [`resources.${normalizedBedType}`]: { $gte: 1 }
+          active: true
         };
 
         if (fromHospital.region) {
@@ -498,7 +692,7 @@ const requestPatientTransfer = async (req, res) => {
           throw new Error("fromHospital location coordinates are missing");
         }
 
-        const nearest = candidates
+        const sortedCandidates = candidates
           .map((hospital) => {
             const targetCoordinates = getHospitalCoordinates(hospital);
             if (!targetCoordinates) return null;
@@ -509,18 +703,36 @@ const requestPatientTransfer = async (req, res) => {
             };
           })
           .filter(Boolean)
-          .sort((a, b) => a.distanceKm - b.distanceKm)[0];
+          .sort((a, b) => a.distanceKm - b.distanceKm);
+
+        let nearest = null;
+
+        for (const candidate of sortedCandidates) {
+          await ensureBedSlotsInitialized({ hospitalId: candidate._id, session });
+
+          const vacantCount = await withSession(
+            BedSlot.countDocuments({
+              hospital: candidate._id,
+              bedType: requestedSlotType,
+              status: "Vacant"
+            }),
+            session
+          );
+
+          if (vacantCount > 0) {
+            nearest = candidate;
+            break;
+          }
+        }
 
         if (!nearest) {
-          throw new Error("No destination hospital with valid coordinates found");
+          throw new Error("No destination hospital found with vacant bed slots");
         }
 
         toHospital = await withSession(Hospital.findById(nearest._id), session);
       }
 
-      if ((toHospital.resources?.[normalizedBedType] || 0) <= 0) {
-        throw new Error("toHospital does not have available beds");
-      }
+      await ensureBedSlotsInitialized({ hospitalId: toHospital._id, session });
 
       const fromHospitalCoordinates = getHospitalCoordinates(fromHospital);
       const toHospitalCoordinates = getHospitalCoordinates(toHospital);
@@ -532,20 +744,20 @@ const requestPatientTransfer = async (req, res) => {
       const route = await getRouteMetadata(fromHospitalCoordinates, toHospitalCoordinates);
 
       const patient = await upsertPatient({
-        patientName,
-        patientId,
+        patientName: resolvedPatientName,
+        patientId: requestedPatientId,
         requiredBedType: normalizedBedType,
         fromHospitalId: fromHospital._id,
-        patientAge,
-        patientSex,
+        patientAge: resolvedPatientAge,
+        patientSex: resolvedPatientSex,
         session
       });
 
       const transferDocs = await Transfer.create(
         [
           {
-            patientName,
-            patientId: patientId || "",
+            patientName: resolvedPatientName,
+            patientId: requestedPatientId || "",
             patient: patient._id,
             requiredBedType: normalizedBedType,
             fromHospital: fromHospital._id,
@@ -571,13 +783,23 @@ const requestPatientTransfer = async (req, res) => {
       });
 
       if (!reservedSlot) {
+        if (destinationHospitalId) {
+          throw new Error("Selected destination hospital has no vacant bed in requested category");
+        }
+
         throw new Error("No exact bed slot available to reserve");
       }
 
-      toHospital.resources[normalizedBedType] = Math.max(
-        0,
-        Number(toHospital.resources?.[normalizedBedType] || 0) - 1
+      const remainingVacantCount = await withSession(
+        BedSlot.countDocuments({
+          hospital: toHospital._id,
+          bedType: requestedSlotType,
+          status: "Vacant"
+        }),
+        session
       );
+
+      toHospital.resources[normalizedBedType] = Math.max(0, Number(remainingVacantCount || 0));
       await saveWithSession(toHospital, session);
 
       transfer.reservedBedSlot = reservedSlot._id;
@@ -591,6 +813,8 @@ const requestPatientTransfer = async (req, res) => {
         releasedAt: null
       };
       await saveWithSession(transfer, session);
+
+      await syncResourceInventoryFromBedSlots({ hospitalId: toHospital._id, session });
 
       patient.transferHistory.push(transfer._id);
       await saveWithSession(patient, session);
@@ -650,7 +874,7 @@ const requestPatientTransfer = async (req, res) => {
         fromHospitalName: fromHospital.name,
         toHospitalName: toHospital.name,
         toHospitalRegion: toHospital.region || toHospital.location?.state || "UNKNOWN",
-        remainingBeds: toHospital.resources?.[normalizedBedType] || 0,
+        remainingBeds: Number(toHospital.resources?.[normalizedBedType] || 0),
         reservedSlotSnapshot: {
           _id: reservedSlot._id,
           wardName: reservedSlot.wardName,
@@ -685,7 +909,8 @@ const requestPatientTransfer = async (req, res) => {
     if (
       message.includes("No destination hospital") ||
       message.includes("No exact bed slot available") ||
-      message.includes("available beds")
+      message.includes("available beds") ||
+      message.includes("no vacant bed")
     ) {
       return res.status(409).json({ message });
     }
@@ -702,7 +927,7 @@ const requestPatientTransfer = async (req, res) => {
     action: "transfer_requested",
     actor: getRequester(requestedBy),
     metadata: {
-      patientName,
+      patientName: resolvedPatientName,
       fromHospitalId,
       requiredBedType: normalizedBedType,
       reservationStatus: "reserved"
@@ -724,7 +949,7 @@ const requestPatientTransfer = async (req, res) => {
       to: notificationEmails.join(","),
       transferId: String(transferId),
       status: "requested",
-      patientName,
+      patientName: resolvedPatientName,
       fromHospitalName,
       toHospitalName,
       note: "Transfer request created and bed reserved",
@@ -749,6 +974,22 @@ const requestPatientTransfer = async (req, res) => {
     requiredBedType: normalizedBedType,
     reservationStatus: "reserved",
     note: "Bed reserved for incoming transfer"
+  });
+
+  emitSocketEvent(req, {
+    eventName: "transfer-requested",
+    hospitalId: response?.toHospital?._id,
+    region: response?.toHospital?.region || toHospitalRegion,
+    payload: {
+      transfer: {
+        _id: String(response?._id || transferId),
+        patientName: response?.patientName || patientName,
+        requiredBedType: response?.requiredBedType || normalizedBedType,
+        requestedBy: {
+          name: response?.requestedBy?.name || requestedBy?.name || "Doctor"
+        }
+      }
+    }
   });
 
   if (autoDispatchSnapshot?.driverId) {
@@ -809,6 +1050,10 @@ const listOpenTransfersForHospital = async (req, res) => {
     return res.status(400).json({ message: "hospitalId must be a valid ObjectId" });
   }
 
+  if (!ensureHospitalScopedAccess(req, hospitalId)) {
+    return res.status(403).json({ message: "Insufficient permissions for this hospital" });
+  }
+
   const transfers = await Transfer.find({
     toHospital: hospitalId,
     status: { $in: ["requested", "dispatched", "in_transit"] }
@@ -829,6 +1074,9 @@ const listHospitalBedSlots = async (req, res) => {
   if (!mongoose.Types.ObjectId.isValid(hospitalId)) {
     return res.status(400).json({ message: "hospitalId must be a valid ObjectId" });
   }
+
+  // Ensure initial ward/bed definitions are materialized into BedSlot records for UI consumers.
+  await ensureBedSlotsInitialized({ hospitalId, session: null });
 
   const filter = { hospital: hospitalId };
 
@@ -862,7 +1110,7 @@ const listHospitalBedSlots = async (req, res) => {
 
 const assignPatientToBedSlot = async (req, res) => {
   const { hospitalId, slotId } = req.params;
-  const { patientName, patientId, patientAge, patientSex, requiredBedType, actor } = req.body;
+  const { patientName, patientId, patientAge, patientSex, requiredBedType, preferredWardName, wardName, actor } = req.body;
 
   if (!mongoose.Types.ObjectId.isValid(hospitalId) || !mongoose.Types.ObjectId.isValid(slotId)) {
     return res.status(400).json({ message: "hospitalId and slotId must be valid ObjectIds" });
@@ -886,17 +1134,42 @@ const assignPatientToBedSlot = async (req, res) => {
 
       hospitalRegion = hospital.region || hospital.location?.state || "";
 
-      const slot = await withSession(BedSlot.findOne({ _id: slotId, hospital: hospitalId }), session);
+      let slot = await withSession(BedSlot.findOne({ _id: slotId, hospital: hospitalId }), session);
       if (!slot) {
         throw new Error("Bed slot not found");
       }
 
       if (slot.status !== "Vacant") {
-        throw new Error("Only vacant bed slots can be assigned directly");
+        const requestedWardName = String(preferredWardName || wardName || "").trim();
+        if (!requestedWardName) {
+          throw new Error("Only vacant bed slots can be assigned directly");
+        }
+
+        const preferredBedType = slotTypeFromBedType(normalizeBedType(requiredBedType));
+        const replacementFilter = {
+          hospital: hospitalId,
+          wardName: requestedWardName,
+          status: "Vacant"
+        };
+
+        if (preferredBedType) {
+          replacementFilter.bedType = preferredBedType;
+        }
+
+        const replacementSlot = await withSession(
+          BedSlot.findOne(replacementFilter).sort({ updatedAt: 1 }),
+          session
+        );
+
+        if (!replacementSlot) {
+          throw new Error("No vacant bed available in selected ward");
+        }
+
+        slot = replacementSlot;
       }
 
       normalizedResourceKey = normalizedBedTypeFromSlotType(slot.bedType);
-      const patientBedType = normalizeBedType(requiredBedType) || normalizedResourceKey || "generalBeds";
+      const patientBedType = normalizedResourceKey || normalizeBedType(requiredBedType) || "generalBeds";
 
       const patient = await upsertPatient({
         patientName,
@@ -915,10 +1188,9 @@ const assignPatientToBedSlot = async (req, res) => {
 
       if (normalizedResourceKey) {
         const currentAvailable = Number(hospital.resources?.[normalizedResourceKey] || 0);
-        if (currentAvailable <= 0) {
-          throw new Error("No available hospital capacity for this bed type");
-        }
-        hospital.resources[normalizedResourceKey] = currentAvailable - 1;
+        // Slot-level occupancy is the source of truth for direct assignment workflows.
+        // Keep aggregate counters in sync without blocking when counters are stale.
+        hospital.resources[normalizedResourceKey] = Math.max(0, currentAvailable - 1);
         await saveWithSession(hospital, session);
       }
 
@@ -929,6 +1201,8 @@ const assignPatientToBedSlot = async (req, res) => {
       slot.reservedForPatient = patient._id;
       slot.reservedForTransfer = null;
       await saveWithSession(slot, session);
+
+      await syncResourceInventoryFromBedSlots({ hospitalId: hospital._id, session });
 
       return { slot, patient };
     });
@@ -1068,6 +1342,8 @@ const releaseBedSlot = async (req, res) => {
       slot.reservedForTransfer = null;
       await saveWithSession(slot, session);
 
+      await syncResourceInventoryFromBedSlots({ hospitalId: hospital._id, session });
+
       return slot;
     });
 
@@ -1185,6 +1461,7 @@ const updateBedSlotStatus = async (req, res) => {
       }
 
       await saveWithSession(slot, session);
+      await syncResourceInventoryFromBedSlots({ hospitalId: hospital._id, session });
       return slot;
     });
 
@@ -1306,9 +1583,12 @@ const updateTransferStatus = async (req, res) => {
   let destinationOccupiedSlot = null;
   let destinationReleasedSlot = null;
   let sourceReleasedSlot = null;
+  let hospitalRegion = "";
 
   try {
     const result = await runWithOptionalTransaction(async (session) => {
+      const inventorySyncHospitalIds = new Set();
+
       const transferDoc = await withSession(
         Transfer.findById(req.params.transferId)
           .populate("fromHospital")
@@ -1322,10 +1602,126 @@ const updateTransferStatus = async (req, res) => {
         throw new Error("Transfer not found");
       }
 
+      hospitalRegion = transferDoc.toHospital?.region || transferDoc.toHospital?.location?.state || "";
+
+      const destinationHospitalId = String(transferDoc.toHospital?._id || transferDoc.toHospital || "");
+      const isDestinationAdmin =
+        req.user?.role === ROLES.HOSPITAL_ADMIN &&
+        req.user?.hospital &&
+        String(req.user.hospital) === destinationHospitalId;
+      const isGovernmentOfficial = req.user?.role === ROLES.GOVERNMENT_OFFICIAL;
+
+      if ((normalizedStatus === "accepted" || finalStatus === "dispatched") && !isDestinationAdmin && !isGovernmentOfficial) {
+        throw new Error("Only destination hospital admin can accept this transfer");
+      }
+
       transferDoc.status = finalStatus;
       transferDoc.timeline.push({ status: finalStatus, note: note || "" });
 
       const bedType = transferDoc.requiredBedType;
+
+      if (finalStatus === "dispatched") {
+        let dispatchAmbulance = null;
+        let dispatchDriver = null;
+
+        if (transferDoc.assignedAmbulance) {
+          dispatchAmbulance = await withSession(
+            Ambulance.findById(transferDoc.assignedAmbulance),
+            session
+          );
+        }
+
+        if (transferDoc.assignedDriver) {
+          dispatchDriver = await withSession(User.findById(transferDoc.assignedDriver), session);
+        }
+
+        const isCurrentDispatchPairValid =
+          dispatchAmbulance &&
+          dispatchAmbulance.active &&
+          dispatchDriver &&
+          dispatchDriver.isActive &&
+          dispatchDriver.role === ROLES.AMBULANCE_DRIVER &&
+          dispatchDriver.hospital &&
+          String(dispatchDriver.hospital) === String(transferDoc.toHospital._id) &&
+          dispatchAmbulance.currentDriver &&
+          String(dispatchAmbulance.currentDriver) === String(dispatchDriver._id);
+
+        if (!isCurrentDispatchPairValid) {
+          dispatchAmbulance = await withSession(
+            Ambulance.findOne({
+              hospital: transferDoc.toHospital._id,
+              active: true,
+              status: "available",
+              currentDriver: { $ne: null }
+            }).sort({ updatedAt: 1 }),
+            session
+          );
+
+          if (dispatchAmbulance?.currentDriver) {
+            dispatchDriver = await withSession(User.findById(dispatchAmbulance.currentDriver), session);
+          } else {
+            dispatchDriver = null;
+          }
+        }
+
+        const hasEligibleDriver =
+          dispatchAmbulance &&
+          dispatchAmbulance.active &&
+          dispatchDriver &&
+          dispatchDriver.isActive &&
+          dispatchDriver.role === ROLES.AMBULANCE_DRIVER &&
+          dispatchDriver.hospital &&
+          String(dispatchDriver.hospital) === String(transferDoc.toHospital._id);
+
+        if (!hasEligibleDriver) {
+          throw new Error("No eligible destination hospital driver available for dispatch");
+        }
+
+        if (
+          transferDoc.assignedAmbulance &&
+          String(transferDoc.assignedAmbulance) !== String(dispatchAmbulance._id)
+        ) {
+          const previousAmbulance = await withSession(
+            Ambulance.findById(transferDoc.assignedAmbulance),
+            session
+          );
+
+          if (previousAmbulance && previousAmbulance.active) {
+            previousAmbulance.status = "available";
+            await saveWithSession(previousAmbulance, session);
+          }
+        }
+
+        transferDoc.assignedAmbulance = dispatchAmbulance._id;
+        transferDoc.assignedDriver = dispatchDriver._id;
+        transferDoc.driverWorkflowStatus = transferDoc.driverWorkflowStatus || "idle";
+
+        if (transferDoc.dispatchStatus !== "accepted") {
+          transferDoc.dispatchStatus = "pending_driver";
+          transferDoc.dispatchMeta.respondedAt = null;
+          transferDoc.dispatchMeta.acceptedAt = null;
+          transferDoc.dispatchMeta.rejectedAt = null;
+          transferDoc.dispatchMeta.rejectionReason = "";
+          transferDoc.driverTimeline.push({
+            status: "idle",
+            note: note || "Destination hospital accepted transfer and assigned driver"
+          });
+        }
+
+        if (!transferDoc.dispatchMeta.assignedAt) {
+          transferDoc.dispatchMeta.assignedAt = new Date();
+        }
+
+        transferDoc.dispatchMeta.lastStatusAt = new Date();
+
+        dispatchAmbulance.currentDriver = dispatchDriver._id;
+        if (dispatchAmbulance.status !== "in_service") {
+          dispatchAmbulance.status = "assigned";
+        }
+
+        await saveWithSession(dispatchAmbulance, session);
+        await syncHospitalAmbulanceAvailability({ hospitalId: transferDoc.toHospital._id, session });
+      }
 
       if (finalStatus === "dispatched" || finalStatus === "in_transit") {
         if (transferDoc.patient) {
@@ -1352,6 +1748,7 @@ const updateTransferStatus = async (req, res) => {
 
         slotOccupied = true;
         destinationOccupiedSlot = occupiedSlot;
+        inventorySyncHospitalIds.add(String(transferDoc.toHospital._id));
 
         transferDoc.reservationStatus = "occupied";
         transferDoc.destinationBedSnapshot = {
@@ -1375,6 +1772,9 @@ const updateTransferStatus = async (req, res) => {
           session
         });
         sourceReleasedSlot = sourceSlot;
+        if (sourceSlot) {
+          inventorySyncHospitalIds.add(String(transferDoc.fromHospital._id));
+        }
 
         if (transferDoc.patient) {
           transferDoc.patient.currentHospital = transferDoc.toHospital._id;
@@ -1404,6 +1804,7 @@ const updateTransferStatus = async (req, res) => {
           if (releasedSlot) {
             slotReleased = true;
             destinationReleasedSlot = releasedSlot;
+            inventorySyncHospitalIds.add(String(transferDoc.toHospital._id));
             transferDoc.toHospital.resources[bedType] =
               Number(transferDoc.toHospital.resources?.[bedType] || 0) + 1;
             await saveWithSession(transferDoc.toHospital, session);
@@ -1449,6 +1850,10 @@ const updateTransferStatus = async (req, res) => {
         }
       }
 
+      for (const syncHospitalId of inventorySyncHospitalIds) {
+        await syncResourceInventoryFromBedSlots({ hospitalId: syncHospitalId, session });
+      }
+
       await saveWithSession(transferDoc, session);
       return transferDoc;
     });
@@ -1463,6 +1868,14 @@ const updateTransferStatus = async (req, res) => {
 
     if (message.includes("reservation") || message.includes("slot")) {
       return res.status(409).json({ message });
+    }
+
+    if (message.includes("No eligible destination hospital driver")) {
+      return res.status(409).json({ message });
+    }
+
+    if (message.includes("Only destination hospital admin")) {
+      return res.status(403).json({ message });
     }
 
     throw error;
@@ -1560,6 +1973,70 @@ const updateTransferStatus = async (req, res) => {
       toHospitalName: transfer.toHospital.name,
       note: note || "",
       route: transfer.route
+    });
+  }
+
+  const transferStatusPayload = {
+    transfer: {
+      _id: String(transfer._id),
+      status: finalStatus,
+      reservationStatus: transfer.reservationStatus,
+      patientName: transfer.patientName,
+      requiredBedType: transfer.requiredBedType,
+      fromHospitalId: transfer.fromHospital?._id ? String(transfer.fromHospital._id) : "",
+      toHospitalId: transfer.toHospital?._id ? String(transfer.toHospital._id) : ""
+    }
+  };
+
+  const transferForDispatch = await Transfer.findById(transfer._id)
+    .populate("fromHospital", "name region")
+    .populate("toHospital", "name region")
+    .populate("assignedAmbulance", "vehicleNumber label status")
+    .populate("assignedDriver", "name email role")
+    .populate("reservedBedSlot", "wardName bedType slotLabel status")
+    .lean();
+
+  if (finalStatus === "dispatched" && transferForDispatch?.assignedDriver?._id) {
+    emitDispatchEvent(req, {
+      eventName: DISPATCH_SOCKET_EVENTS.ASSIGNED,
+      hospitalId: transferForDispatch?.toHospital?._id,
+      region: transferForDispatch?.toHospital?.region || hospitalRegion,
+      driverId: transferForDispatch?.assignedDriver?._id,
+      payload: {
+        transferId: String(transferForDispatch?._id || transfer._id),
+        patientName: transferForDispatch?.patientName || transfer.patientName,
+        fromHospital: transferForDispatch?.fromHospital,
+        toHospital: transferForDispatch?.toHospital,
+        requiredBedType: transferForDispatch?.requiredBedType || transfer.requiredBedType,
+        dispatchStatus: transferForDispatch?.dispatchStatus,
+        assignedAmbulance: transferForDispatch?.assignedAmbulance,
+        assignedDriver: transferForDispatch?.assignedDriver
+      }
+    });
+
+    await notifyDriverDispatchChannels({
+      transfer: transferForDispatch,
+      driver: transferForDispatch?.assignedDriver,
+      note: "Destination hospital accepted transfer and requires dispatch confirmation"
+    });
+  }
+
+  emitSocketEvent(req, {
+    eventName: "transfer-status-updated",
+    hospitalId: transfer.toHospital?._id,
+    region: transfer.toHospital?.region,
+    payload: transferStatusPayload
+  });
+
+  if (
+    transfer.fromHospital?._id &&
+    String(transfer.fromHospital._id) !== String(transfer.toHospital?._id || "")
+  ) {
+    emitSocketEvent(req, {
+      eventName: "transfer-status-updated",
+      hospitalId: transfer.fromHospital._id,
+      region: transfer.fromHospital?.region,
+      payload: transferStatusPayload
     });
   }
 
@@ -2173,6 +2650,37 @@ const respondToDriverDispatch = async (req, res) => {
     }
   });
 
+  const transferStatusPayload = {
+    transfer: {
+      _id: String(transfer?._id || updatedTransfer._id),
+      status: transfer?.status || updatedTransfer.status,
+      reservationStatus: transfer?.reservationStatus || updatedTransfer.reservationStatus,
+      patientName: transfer?.patientName || updatedTransfer.patientName,
+      requiredBedType: transfer?.requiredBedType || updatedTransfer.requiredBedType,
+      fromHospitalId: transfer?.fromHospital?._id ? String(transfer.fromHospital._id) : "",
+      toHospitalId: transfer?.toHospital?._id ? String(transfer.toHospital._id) : ""
+    }
+  };
+
+  emitSocketEvent(req, {
+    eventName: "transfer-status-updated",
+    hospitalId: transfer?.toHospital?._id,
+    region: transfer?.toHospital?.region || hospitalRegion,
+    payload: transferStatusPayload
+  });
+
+  if (
+    transfer?.fromHospital?._id &&
+    String(transfer.fromHospital._id) !== String(transfer?.toHospital?._id || "")
+  ) {
+    emitSocketEvent(req, {
+      eventName: "transfer-status-updated",
+      hospitalId: transfer.fromHospital._id,
+      region: transfer?.fromHospital?.region,
+      payload: transferStatusPayload
+    });
+  }
+
   return res.status(200).json({ transfer });
 };
 
@@ -2303,6 +2811,37 @@ const updateDriverDispatchProgress = async (req, res) => {
       note: note || ""
     }
   });
+
+  const transferStatusPayload = {
+    transfer: {
+      _id: String(transfer?._id || updatedTransfer._id),
+      status: transfer?.status || updatedTransfer.status,
+      reservationStatus: transfer?.reservationStatus || updatedTransfer.reservationStatus,
+      patientName: transfer?.patientName || updatedTransfer.patientName,
+      requiredBedType: transfer?.requiredBedType || updatedTransfer.requiredBedType,
+      fromHospitalId: transfer?.fromHospital?._id ? String(transfer.fromHospital._id) : "",
+      toHospitalId: transfer?.toHospital?._id ? String(transfer.toHospital._id) : ""
+    }
+  };
+
+  emitSocketEvent(req, {
+    eventName: "transfer-status-updated",
+    hospitalId: transfer?.toHospital?._id,
+    region: transfer?.toHospital?.region || hospitalRegion,
+    payload: transferStatusPayload
+  });
+
+  if (
+    transfer?.fromHospital?._id &&
+    String(transfer.fromHospital._id) !== String(transfer?.toHospital?._id || "")
+  ) {
+    emitSocketEvent(req, {
+      eventName: "transfer-status-updated",
+      hospitalId: transfer.fromHospital._id,
+      region: transfer?.fromHospital?.region,
+      payload: transferStatusPayload
+    });
+  }
 
   return res.status(200).json({ transfer });
 };
@@ -2539,6 +3078,7 @@ const updateHospitalResources = async (req, res) => {
 module.exports = {
   searchHospitalsByResource,
   getNearestHospitalWithRequiredBed,
+  lookupPatientByPatientId,
   requestPatientTransfer,
   listOpenTransfersForHospital,
   listHospitalBedSlots,

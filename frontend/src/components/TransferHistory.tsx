@@ -1,6 +1,8 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 import axiosInstance from "@/api/axiosInstance";
+import { useAuth } from "@/contexts/AuthContext";
+import { useSocket } from "@/hooks/useSocket";
 
 type TransferHistoryRow = {
   id: string;
@@ -50,49 +52,77 @@ const statusTextClass = (status: string) => {
 };
 
 const TransferHistory = () => {
+  const { user } = useAuth();
   const [rows, setRows] = useState<TransferHistoryRow[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  useEffect(() => {
-    const fetchTransferHistory = async () => {
-      try {
-        setIsLoading(true);
+  const fetchTransferHistory = useCallback(async () => {
+    try {
+      setIsLoading(true);
 
-        const response = await axiosInstance.get("/logistics/history");
-        const transfers = response?.data?.transfers || response?.data?.data?.transfers || [];
+      const response = await axiosInstance.get("/logistics/history", {
+        params: user?.hospital
+          ? {
+              hospitalId: user.hospital,
+            }
+          : undefined,
+      });
+      const transfers = response?.data?.transfers || response?.data?.data?.transfers || [];
 
-        const mappedRows: TransferHistoryRow[] = Array.isArray(transfers)
-          ? transfers.map((transfer: any) => ({
-              id: transfer?._id || "N/A",
-              patientId: transfer?.patientId?.trim?.() || "-",
-              from: `${transfer?.requestedBy?.name || "Doctor"} / ${
-                typeof transfer?.fromHospital === "string"
-                  ? transfer.fromHospital
-                  : transfer?.fromHospital?.name || "Unknown Hospital"
-              }`,
-              to:
-                typeof transfer?.toHospital === "string"
-                  ? transfer.toHospital
-                  : transfer?.toHospital?.name || "Unknown Hospital",
-              status: toReadableStatus(transfer?.status),
-              time: readableDateTime(transfer?.updatedAt || transfer?.createdAt),
-            }))
-          : [];
+      const mappedRows: TransferHistoryRow[] = Array.isArray(transfers)
+        ? transfers.map((transfer: any) => ({
+            id: transfer?._id || "N/A",
+            patientId: transfer?.patientId?.trim?.() || "-",
+            from: `${transfer?.requestedBy?.name || "Doctor"} / ${
+              typeof transfer?.fromHospital === "string"
+                ? transfer.fromHospital
+                : transfer?.fromHospital?.name || "Unknown Hospital"
+            }`,
+            to:
+              typeof transfer?.toHospital === "string"
+                ? transfer.toHospital
+                : transfer?.toHospital?.name || "Unknown Hospital",
+            status: toReadableStatus(transfer?.status),
+            time: readableDateTime(transfer?.updatedAt || transfer?.createdAt),
+          }))
+        : [];
 
-        setRows(mappedRows);
-        setErrorMessage(null);
-      } catch (error: any) {
-        const message =
-          error?.response?.data?.message || error?.message || "Failed to load transfer history";
-        setErrorMessage(message);
-      } finally {
-        setIsLoading(false);
+      setRows(mappedRows);
+      setErrorMessage(null);
+    } catch (error: any) {
+      const message =
+        error?.response?.data?.message || error?.message || "Failed to load transfer history";
+      setErrorMessage(message);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [user?.hospital]);
+
+  const handleRealtimeTransferEvent = useCallback(
+    (payload?: { hospitalId?: string }) => {
+      if (payload?.hospitalId && user?.hospital && payload.hospitalId !== user.hospital) {
+        return;
       }
-    };
 
-    fetchTransferHistory();
-  }, []);
+      void fetchTransferHistory();
+    },
+    [fetchTransferHistory, user?.hospital]
+  );
+
+  useSocket<{ hospitalId?: string }>({
+    eventName: "transfer-requested",
+    onEvent: handleRealtimeTransferEvent,
+  });
+
+  useSocket<{ hospitalId?: string }>({
+    eventName: "transfer-status-updated",
+    onEvent: handleRealtimeTransferEvent,
+  });
+
+  useEffect(() => {
+    void fetchTransferHistory();
+  }, [fetchTransferHistory]);
 
   if (isLoading) {
     return <p className="text-sm text-muted-foreground">Loading transfer history...</p>;

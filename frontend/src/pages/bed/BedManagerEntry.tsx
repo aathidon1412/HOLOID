@@ -31,7 +31,7 @@ const BedManagerEntry = () => {
   const [patientAge, setPatientAge] = useState("");
   const [patientSex, setPatientSex] = useState("unknown");
   const [requiredBedType, setRequiredBedType] = useState("icuBeds");
-  const [selectedSlotId, setSelectedSlotId] = useState("");
+  const [selectedWardName, setSelectedWardName] = useState("");
 
   const actor = useMemo(
     () => ({ role: user?.role || "BED_MANAGER", id: user?.id || "", name: user?.name || "" }),
@@ -45,6 +45,7 @@ const BedManagerEntry = () => {
       }
 
       queryClient.invalidateQueries({ queryKey: ["bed-manager-open-transfers", user?.hospital] });
+      queryClient.invalidateQueries({ queryKey: ["bed-manager-all-slots", user?.hospital] });
       queryClient.invalidateQueries({ queryKey: ["bed-manager-vacant-slots", user?.hospital] });
       queryClient.invalidateQueries({ queryKey: ["bed-manager-occupied-slots", user?.hospital] });
     },
@@ -71,6 +72,16 @@ const BedManagerEntry = () => {
     onEvent: handleRealtimeOccupancyEvent,
   });
 
+  useSocket<{ hospitalId?: string }>({
+    eventName: "transfer-requested",
+    onEvent: handleRealtimeOccupancyEvent,
+  });
+
+  useSocket<{ hospitalId?: string }>({
+    eventName: "transfer-status-updated",
+    onEvent: handleRealtimeOccupancyEvent,
+  });
+
   const { data: openTransfers = [], isLoading: loadingTransfers } = useQuery<TransferItem[]>({
     queryKey: ["bed-manager-open-transfers", user?.hospital],
     queryFn: () => bedManagerService.listOpenTransfers(user!.hospital!),
@@ -80,6 +91,12 @@ const BedManagerEntry = () => {
   const { data: vacantSlots = [], isLoading: loadingVacantSlots } = useQuery<BedSlotItem[]>({
     queryKey: ["bed-manager-vacant-slots", user?.hospital],
     queryFn: () => bedManagerService.listBedSlots(user!.hospital!, { status: "Vacant" }),
+    enabled: !!user?.hospital,
+  });
+
+  const { data: allSlots = [], isLoading: loadingAllSlots } = useQuery<BedSlotItem[]>({
+    queryKey: ["bed-manager-all-slots", user?.hospital],
+    queryFn: () => bedManagerService.listBedSlots(user!.hospital!),
     enabled: !!user?.hospital,
   });
 
@@ -105,7 +122,8 @@ const BedManagerEntry = () => {
       setPatientId("");
       setPatientAge("");
       setPatientSex("unknown");
-      setSelectedSlotId("");
+      setSelectedWardName("");
+      queryClient.invalidateQueries({ queryKey: ["bed-manager-all-slots", user?.hospital] });
       queryClient.invalidateQueries({ queryKey: ["bed-manager-vacant-slots", user?.hospital] });
       queryClient.invalidateQueries({ queryKey: ["bed-manager-occupied-slots", user?.hospital] });
     },
@@ -122,6 +140,7 @@ const BedManagerEntry = () => {
       }),
     onSuccess: () => {
       toast.success("Bed released and patient discharged");
+      queryClient.invalidateQueries({ queryKey: ["bed-manager-all-slots", user?.hospital] });
       queryClient.invalidateQueries({ queryKey: ["bed-manager-vacant-slots", user?.hospital] });
       queryClient.invalidateQueries({ queryKey: ["bed-manager-occupied-slots", user?.hospital] });
       queryClient.invalidateQueries({ queryKey: ["bed-manager-open-transfers", user?.hospital] });
@@ -137,6 +156,7 @@ const BedManagerEntry = () => {
     onSuccess: () => {
       toast.success("Transfer status updated");
       queryClient.invalidateQueries({ queryKey: ["bed-manager-open-transfers", user?.hospital] });
+      queryClient.invalidateQueries({ queryKey: ["bed-manager-all-slots", user?.hospital] });
       queryClient.invalidateQueries({ queryKey: ["bed-manager-vacant-slots", user?.hospital] });
       queryClient.invalidateQueries({ queryKey: ["bed-manager-occupied-slots", user?.hospital] });
     },
@@ -145,10 +165,25 @@ const BedManagerEntry = () => {
     },
   });
 
-  const filteredVacantSlots = useMemo(
-    () => vacantSlots.filter((slot) => mapSlotTypeToNormalized(slot.bedType) === requiredBedType),
-    [vacantSlots, requiredBedType]
-  );
+  const wardOptions = useMemo(() => {
+    const wards = new Map<string, { totalSlots: number; vacantSlots: number }>();
+
+    for (const slot of allSlots) {
+      if (!wards.has(slot.wardName)) {
+        wards.set(slot.wardName, { totalSlots: 0, vacantSlots: 0 });
+      }
+
+      const row = wards.get(slot.wardName)!;
+      row.totalSlots += 1;
+      if (slot.status === "Vacant") {
+        row.vacantSlots += 1;
+      }
+    }
+
+    return Array.from(wards.entries())
+      .sort((a, b) => a[0].localeCompare(b[0]))
+      .map(([wardName, metrics]) => ({ wardName, ...metrics }));
+  }, [allSlots]);
 
   return (
     <div>
@@ -160,7 +195,7 @@ const BedManagerEntry = () => {
         </div>
 
         <div className="rounded-lg border border-border bg-card p-5 space-y-4">
-          <h3 className="text-sm font-semibold text-foreground">Assign Patient to Exact Bed Slot</h3>
+          <h3 className="text-sm font-semibold text-foreground">Assign Patient to Ward</h3>
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
             <input
@@ -205,14 +240,14 @@ const BedManagerEntry = () => {
               ))}
             </select>
             <select
-              value={selectedSlotId}
-              onChange={(e) => setSelectedSlotId(e.target.value)}
+              value={selectedWardName}
+              onChange={(e) => setSelectedWardName(e.target.value)}
               className="rounded-md border border-border bg-secondary px-3 py-2 text-sm text-foreground"
             >
-              <option value="">Select vacant slot</option>
-              {filteredVacantSlots.map((slot) => (
-                <option key={slot._id} value={slot._id}>
-                  {slot.wardName} / {slot.slotLabel} / {slot.bedType}
+              <option value="">Select ward</option>
+              {wardOptions.map((ward) => (
+                <option key={ward.wardName} value={ward.wardName}>
+                  {ward.wardName} ({ward.vacantSlots} vacant / {ward.totalSlots} total)
                 </option>
               ))}
             </select>
@@ -224,13 +259,24 @@ const BedManagerEntry = () => {
                 toast.error("Patient name is required");
                 return;
               }
-              if (!selectedSlotId) {
-                toast.error("Please select a vacant slot");
+              if (!selectedWardName) {
+                toast.error("Please select a ward");
                 return;
               }
-              assignMutation.mutate(selectedSlotId);
+
+              const slotsInWard = vacantSlots.filter((slot) => slot.wardName === selectedWardName);
+              const selectedSlot =
+                slotsInWard.find((slot) => mapSlotTypeToNormalized(slot.bedType) === requiredBedType) ||
+                slotsInWard[0];
+
+              if (!selectedSlot) {
+                toast.error("No vacant bed available in selected ward");
+                return;
+              }
+
+              assignMutation.mutate(selectedSlot._id);
             }}
-            disabled={assignMutation.isPending || !user?.hospital || loadingVacantSlots}
+            disabled={assignMutation.isPending || !user?.hospital || loadingVacantSlots || loadingAllSlots}
           >
             {assignMutation.isPending ? "Assigning..." : "Assign Patient"}
           </Button>

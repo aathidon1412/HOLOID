@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useEffect, useMemo, useState, ReactNode } from "react";
-import { apiRequest, ApiClientError, setToken } from "@/lib/api";
+import { apiRequest, ApiClientError, getToken, setToken } from "@/lib/api";
 
 export type UserRole =
   | "HOSPITAL_ADMIN"
@@ -41,7 +41,7 @@ type RegisterResponse = {
 
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [user, setUser] = useState<User | null>(null);
-  const [accessToken, setAccessToken] = useState<string | null>(() => localStorage.getItem("holoid_access_token"));
+  const [accessToken, setAccessToken] = useState<string | null>(() => getToken());
   const [isLoading, setIsLoading] = useState(true);
 
   const refreshSession = async () => {

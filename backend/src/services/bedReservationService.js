@@ -164,6 +164,7 @@ const releaseOneOccupiedSourceBedSlot = async ({ hospitalId, normalizedBedType, 
 };
 
 module.exports = {
+  ensureBedSlotsInitialized,
   slotTypeFromBedType,
   reserveBedSlot,
   occupyReservedBedSlot,

@@ -60,6 +60,7 @@ const DoctorRequestTransfer = () => {
   const [hospitals, setHospitals] = useState<HospitalOption[]>([]);
   const [selectedHospitalId, setSelectedHospitalId] = useState<string | null>(null);
   const [isLoadingHospitals, setIsLoadingHospitals] = useState(false);
+  const [isFetchingPatient, setIsFetchingPatient] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const selectedHospital = useMemo(
@@ -91,8 +92,8 @@ const DoctorRequestTransfer = () => {
   }, [user?.hospital]);
 
   const handleRequestTransfer = async (targetHospitalId?: string | null) => {
-    if (!patientName.trim()) {
-      toast.error("Patient name is required");
+    if (!patientName.trim() && !patientId.trim()) {
+      toast.error("Provide patient name or patient ID");
       return;
     }
 
@@ -146,6 +147,48 @@ const DoctorRequestTransfer = () => {
     }
   };
 
+  const handleFetchPatientById = async () => {
+    const trimmedPatientId = patientId.trim();
+    if (!trimmedPatientId) {
+      toast.error("Enter patient ID first");
+      return;
+    }
+
+    if (!user?.hospital) {
+      toast.error("Your account is not linked to a hospital");
+      return;
+    }
+
+    try {
+      setIsFetchingPatient(true);
+
+      const res = await axiosInstance.get("/logistics/patients/lookup", {
+        params: {
+          patientId: trimmedPatientId,
+          hospitalId: user.hospital,
+        },
+      });
+
+      const patient = res?.data?.patient || res?.data?.data?.patient;
+      if (!patient) {
+        toast.error("Patient not found");
+        return;
+      }
+
+      setPatientName(patient.name || "");
+      if (patient.requiredBedType) {
+        setRequiredBedType(patient.requiredBedType);
+      }
+
+      toast.success("Patient details loaded from database");
+    } catch (err: any) {
+      const message = err?.response?.data?.message || err?.message || "Failed to fetch patient";
+      toast.error(message);
+    } finally {
+      setIsFetchingPatient(false);
+    }
+  };
+
   return (
     <div>
       <TopBar title="Request Patient Transfer" />
@@ -176,11 +219,21 @@ const DoctorRequestTransfer = () => {
               </div>
               <div className="space-y-2">
                 <Label>Patient ID (optional)</Label>
-                <Input
-                  value={patientId}
-                  onChange={(e) => setPatientId(e.target.value)}
-                  className="bg-secondary border-border"
-                />
+                <div className="flex items-center gap-2">
+                  <Input
+                    value={patientId}
+                    onChange={(e) => setPatientId(e.target.value)}
+                    className="bg-secondary border-border"
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={handleFetchPatientById}
+                    disabled={isFetchingPatient || !patientId.trim()}
+                  >
+                    {isFetchingPatient ? "Fetching..." : "Fetch"}
+                  </Button>
+                </div>
               </div>
               <div className="space-y-2">
                 <Label>Bed Required</Label>
@@ -195,7 +248,11 @@ const DoctorRequestTransfer = () => {
                 </select>
               </div>
             </div>
-            <div className="flex justify-end"><Button onClick={() => setStep(2)} disabled={!patientName.trim()}>Next →</Button></div>
+            <div className="flex justify-end">
+              <Button onClick={() => setStep(2)} disabled={!patientName.trim() && !patientId.trim()}>
+                Next →
+              </Button>
+            </div>
           </div>
         )}
 
