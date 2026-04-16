@@ -21,7 +21,6 @@ import DoctorTransfers from "@/pages/doctor/DoctorTransfers";
 import DoctorHistory from "@/pages/doctor/DoctorHistory";
 import DoctorSettings from "@/pages/doctor/DoctorSettings";
 import BedManagerEntry from "@/pages/bed/BedManagerEntry";
-import DataEntryBoard from "@/pages/bed/DataEntryBoard";
 import AmbulanceDispatch from "@/pages/ambulance/AmbulanceDispatch";
 import GovCommandCenter from "@/pages/gov/GovCommandCenter";
 import GovMap from "@/pages/gov/GovMap";
@@ -83,11 +82,6 @@ const App = () => (
                 {/* Bed Manager Routes */}
                 <Route element={<DashboardLayout />}>
                   <Route path="/bed-manager/entry" element={<BedManagerEntry />} />
-                </Route>
-
-                {/* Data Entry Routes */}
-                <Route element={<DashboardLayout />}>
-                  <Route path="/data-entry/entry" element={<DataEntryBoard />} />
                 </Route>
 
                 {/* Ambulance Driver Routes */}

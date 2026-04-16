@@ -12,7 +12,6 @@ const ROLE_ROUTES: Record<UserRole, string> = {
   HOSPITAL_ADMIN: "/admin/inventory",
   DOCTOR: "/doctor/overview",
   BED_MANAGER: "/bed-manager/entry",
-  DATA_ENTRY: "/data-entry/entry",
   AMBULANCE_DRIVER: "/ambulance/dispatch",
   GOVERNMENT_OFFICIAL: "/gov/command-center",
 };
@@ -223,7 +222,6 @@ const LoginPage = () => {
                   <option value="HOSPITAL_ADMIN">Hospital Admin</option>
                   <option value="DOCTOR">Doctor</option>
                   <option value="BED_MANAGER">Bed Manager</option>
-                  <option value="DATA_ENTRY">Data Entry</option>
                   <option value="AMBULANCE_DRIVER">Ambulance Driver</option>
                   <option value="GOVERNMENT_OFFICIAL">Government Official</option>
                 </select>

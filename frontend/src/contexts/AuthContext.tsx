@@ -5,7 +5,6 @@ export type UserRole =
   | "HOSPITAL_ADMIN"
   | "DOCTOR"
   | "BED_MANAGER"
-  | "DATA_ENTRY"
   | "AMBULANCE_DRIVER"
   | "GOVERNMENT_OFFICIAL";
 

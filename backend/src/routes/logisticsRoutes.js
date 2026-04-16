@@ -37,7 +37,6 @@ router.get(
     ROLES.DOCTOR,
     ROLES.HOSPITAL_ADMIN,
     ROLES.BED_MANAGER,
-    ROLES.DATA_ENTRY,
     ROLES.GOVERNMENT_OFFICIAL
   ),
   lookupPatientByPatientId
@@ -50,7 +49,6 @@ router.post(
     ROLES.DOCTOR,
     ROLES.HOSPITAL_ADMIN,
     ROLES.BED_MANAGER,
-    ROLES.DATA_ENTRY,
     ROLES.GOVERNMENT_OFFICIAL
   ),
   requestPatientTransfer
@@ -62,7 +60,6 @@ router.post(
     ROLES.DOCTOR,
     ROLES.HOSPITAL_ADMIN,
     ROLES.BED_MANAGER,
-    ROLES.DATA_ENTRY,
     ROLES.GOVERNMENT_OFFICIAL
   ),
   requestPatientTransfer
