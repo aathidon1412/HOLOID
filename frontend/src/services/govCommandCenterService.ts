@@ -39,6 +39,30 @@ export type TransferMetrics = {
   accepted: number;
 };
 
+export type GovTransferHistoryItem = {
+  _id: string;
+  patientId?: string;
+  patientName?: string;
+  requiredBedType?: "generalBeds" | "icuBeds" | "ventilatorBeds" | string;
+  status?: string;
+  fromHospital?: { name?: string; region?: string } | string;
+  toHospital?: { name?: string; region?: string } | string;
+  createdAt?: string;
+  updatedAt?: string;
+};
+
+export type GovAuditLogItem = {
+  _id: string;
+  entityType?: string;
+  action?: string;
+  actor?: {
+    role?: string;
+    id?: string;
+    name?: string;
+  };
+  createdAt?: string;
+};
+
 export const govCommandCenterService = {
   async getRegionOccupancySummary() {
     const res = await axiosInstance.get("/command-center/regions/occupancy");
@@ -60,5 +84,34 @@ export const govCommandCenterService = {
       awaitingDriver: Number(res.data?.metrics?.awaitingDriver || 0),
       accepted: Number(res.data?.metrics?.accepted || 0),
     } as TransferMetrics;
+  },
+
+  async getTransferHistory(params?: { status?: string; limit?: number }) {
+    const res = await axiosInstance.get("/command-center/transfers/history", {
+      params: {
+        status: params?.status || undefined,
+        limit: params?.limit || 200,
+      },
+    });
+
+    return {
+      count: Number(res.data?.count || 0),
+      transfers: (res.data?.transfers || []) as GovTransferHistoryItem[],
+    };
+  },
+
+  async getAuditLogs(params?: { entityType?: string; action?: string; limit?: number }) {
+    const res = await axiosInstance.get("/command-center/audit-logs", {
+      params: {
+        entityType: params?.entityType || undefined,
+        action: params?.action || undefined,
+        limit: params?.limit || 100,
+      },
+    });
+
+    return {
+      count: Number(res.data?.count || 0),
+      logs: (res.data?.logs || []) as GovAuditLogItem[],
+    };
   },
 };
