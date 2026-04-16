@@ -1,0 +1,173 @@
+Create a presentation titled HOLOID: Real-Time Hospital Bed and Resource Management System.
+
+Goal:
+Build a complete, evidence-grounded project presentation for a final review/viva that balances technical depth and stakeholder clarity. Use a mixed tone (academic rigor plus practical product-demo readability). Do not invent metrics, KPIs, or production outcomes.
+
+Critical constraints:
+1. Use only implementation-supported claims.
+2. If a value is unknown, write Placeholder: To be measured during demo.
+3. Keep all diagrams simplified and readable (high-level visual plus concise labels).
+4. Keep mandatory slide numbering and include allowed extra slides 9A, 9B, 9C, and 10A.
+5. Use healthcare-tech visual language: clean grid, blue/teal accents, subtle red/orange for critical states, consistent icon style.
+6. Add presenter notes (40-70 words per slide) focused on what to say verbally.
+
+Verified project facts to reflect:
+1. Full-stack platform with React + TypeScript frontend, Node.js/Express backend, MongoDB data layer.
+2. Role-based access and route protection across six roles: Hospital Admin, Doctor, Bed Manager, Data Entry, Ambulance Driver, Government Official.
+3. Email activation + JWT authentication.
+4. Bed-slot level occupancy model with patient linkage and reservation lifecycle (vacant, reserved, occupied, released).
+5. Transfer orchestration with nearest-hospital search and route metadata.
+6. Dispatch workflow with ambulance/driver assignment, driver response, progress states, and handover completion.
+7. Live driver location updates with adaptive cadence (5s moving, 30s idle/arrived) and ETA updates.
+8. Real-time events for bed-slot and dispatch lifecycle via sockets.
+9. Command-center analytics include region occupancy, critical hospitals, transfer history, audit logs, and live fleet.
+10. Live map uses OpenStreetMap/Leaflet approach.
+11. Push notifications for urgent dispatch, with email as informational fallback.
+12. SDLC status is project-specific: Phase 0 through Phase 2E completed; Phase 3A and 3B pending.
+
+Slide plan (required order):
+1. Introduction
+- Introduce HOLOID as a centralized emergency-care coordination platform.
+- Context: surge scenarios (pandemics, disasters, regional overload).
+- Value proposition: faster bed visibility, safer transfers, coordinated decision-making.
+- Include project tagline and clean title visual.
+
+2. Problem Statement
+- Fragmented communication, manual reconciliation, delayed updates.
+- Poor bed visibility and transfer delays under pressure.
+- Need for role-aware, real-time, auditable digital coordination.
+
+3. Existing System Disadvantages
+- Phone/spreadsheet dependency.
+- Inconsistent reporting formats.
+- No live cross-hospital occupancy lens.
+- Weak transfer traceability and delayed escalation.
+
+4. Proposed Solution and How It Overcomes Existing Gaps
+- Centralized platform with role-based workflows.
+- Live inventory + transfer orchestration + command-center analytics.
+- Event-driven updates reduce stale data.
+- Audit-friendly records improve accountability.
+- Add a simple Before vs After comparison panel.
+
+5. Technology Stack + Project SDLC
+- Stack section:
+Frontend: React, TypeScript, Tailwind.
+Backend: Node.js, Express.
+Database: MongoDB, Mongoose.
+Real-time: Socket communication.
+Map: OpenStreetMap/Leaflet.
+Notifications: Web Push + Email.
+Security: JWT + RBAC.
+- SDLC section (timeline graphic):
+Completed: Phase 0, 1A, 1B, 1C, 1D, 1E, 2A, 2B, 2C, 2D, 2E.
+Pending: 3A Forecasting engine, 3B Forecast visualization/governance.
+- Explicit note: This is HOLOID's actual implementation progression, not textbook generic SDLC.
+
+6. Use Case Diagram
+- Actors: Hospital Admin, Doctor, Bed Manager, Data Entry, Ambulance Driver, Government Official.
+- Main use cases:
+Authenticate, manage inventory, request transfer, reserve/release bed, accept/track transfer, assign dispatch, update driver progress/location, monitor command center, review logs.
+- Keep diagram simple with grouped use cases per actor.
+
+7. System Architecture
+- Layered diagram:
+Frontend role dashboards -> API gateway/routes -> controllers/services -> MongoDB models -> real-time socket channels.
+- Cross-cutting services: authentication, RBAC, notifications, audit logging, map routing.
+- Show bidirectional real-time channel from backend to clients.
+
+8. Overall Module Diagram
+- Modules and interactions:
+Auth & User Context.
+Resource Inventory & Bed Slots.
+Patient & Transfer Logistics.
+Ambulance Dispatch & Live Tracking.
+Command Center Analytics.
+Notification + Audit.
+- Use arrows for data/event flow between modules.
+
+9. Module Descriptions (Overview)
+- One-slide summary table:
+Module, purpose, key inputs, key outputs.
+- Keep compact and lead into 9A-9C details.
+
+9A. Module Details: Access + Inventory
+- Authentication/activation and role gating.
+- Hospital resource structure and bed-slot materialization.
+- Direct assignment/release/status workflows.
+- Real-time bed-slot lifecycle events.
+
+9B. Module Details: Transfer + Dispatch
+- Hospital search and nearest selection logic.
+- Transfer lifecycle states and reservation integrity.
+- Driver assignment, accept/reject, progress transitions.
+- GPS/location updates and ETA refresh behavior.
+
+9C. Module Details: Command Center + Notification + Audit
+- Region occupancy and critical hospital visibility.
+- Live fleet board and dispatch state monitoring.
+- Push alert path for dispatch urgency, email fallback.
+- Audit trail as governance backbone.
+
+10. Results and Discussion (Implementation Outcomes)
+- Discuss observed implemented capabilities, not fabricated KPI claims:
+Live occupancy synchronization.
+Transfer workflow traceability.
+Role-segregated operations.
+Live dispatch and map visibility.
+- Include two large screenshot placeholders:
+Placeholder S10-1: Government Command Center dashboard.
+Placeholder S10-2: Government Live Map with fleet markers and paths.
+- Add short interpretation text below each placeholder.
+
+10A. Results Screenshot Board (Supplementary)
+- 3-column visual board with placeholders:
+Placeholder S10A-1: Admin Inventory view.
+Placeholder S10A-2: Doctor Overview view.
+Placeholder S10A-3: Ambulance Dispatch inbox/progress view.
+- Add one-line What this proves caption under each image.
+
+11. Conclusion
+- HOLOID converts fragmented emergency coordination into a unified operational workflow.
+- Demonstrates practical integration of RBAC, real-time events, logistics orchestration, and command-center oversight.
+- Emphasize implementation readiness and extensible architecture.
+
+12. Future Enhancements
+- Phase 3A: Non-AI forecasting API (7/14/30-day shortage risk using historical trends).
+- Phase 3B: Forecast dashboards, risk bands, and governance controls.
+- Optional future seam for external AI integration later.
+- If proposal targets are shown, clearly label them as future validation targets, not current measured outcomes.
+
+13. Questions
+- Minimal clean slide with project identity and prompt:
+Questions and Discussion.
+- Include subtle visual motif from prior slides.
+
+14. Thank You
+- Thank-you message with presenter/team details area.
+- Include logo placeholder at top or center.
+- Keep visual style consistent with title slide.
+
+Diagram rendering instructions for Gamma:
+1. Use modern software-engineering diagram style (clean boxes, directional arrows, concise labels).
+2. Favor readability over density.
+3. Use consistent color coding:
+Access/Security, Operations, Real-time, Analytics, Notifications.
+4. Keep diagrams high contrast and export-friendly.
+
+Final quality gate inside output:
+1. Ensure all mandatory slides 1-14 are present.
+2. Ensure extra slides only at 9A, 9B, 9C, 10A.
+3. Ensure SDLC slide explicitly marks Phase 0-2E completed and Phase 3A-3B pending.
+4. Ensure no hard performance numbers are claimed unless explicitly marked as placeholders/targets.
+5. Ensure results slides use screenshot placeholders where data/images are not embedded.
+
+Compact screenshot capture checklist (aligned to Slide 10 and 10A):
+1. Capture S10-1 (Command Center): Open government command center page with occupancy cards and region table visible.
+2. Capture S10-2 (Live Map): Open government map with at least one ambulance marker/polyline and legend visible.
+3. Capture S10A-1 (Admin Inventory): Show summary cards plus ward-level resource section in one frame.
+4. Capture S10A-2 (Doctor Overview): Show quick search, vacancy cards, and recent activity panel.
+5. Capture S10A-3 (Ambulance Dispatch): Show inbox item with dispatch status and action/progress controls.
+6. Use consistent capture format: 16:9, clear text, browser zoom 100%, crop distracting browser chrome.
+7. Filename convention: S10-1_CommandCenter, S10-2_LiveMap, S10A-1_AdminInventory, S10A-2_DoctorOverview, S10A-3_AmbulanceDispatch.
+8. Privacy check before final deck export: no real personal identifiers in screenshots.
