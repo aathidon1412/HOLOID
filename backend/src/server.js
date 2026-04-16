@@ -57,6 +57,10 @@ const startServer = async () => {
             socket.join(`user-${socket.user.id}`);
         }
 
+        if (socket.user?.role === "GOVERNMENT_OFFICIAL") {
+            socket.join("command-center");
+        }
+
         socket.on("join-region", (region) => {
             if (typeof region !== "string" || !region.trim()) return;
             socket.join(region);
@@ -66,6 +70,12 @@ const startServer = async () => {
         socket.on("subscribe-hospital", (hospitalId) => {
             if (!hospitalId || typeof hospitalId !== "string") return;
             socket.join(`hospital-${hospitalId}`);
+        });
+
+        socket.on("join-command-center", () => {
+            if (socket.user?.role === "GOVERNMENT_OFFICIAL") {
+                socket.join("command-center");
+            }
         });
 
         socket.on("unsubscribe-hospital", (hospitalId) => {

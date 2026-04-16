@@ -68,6 +68,35 @@ const dispatchMetaSchema = new mongoose.Schema(
   { _id: false }
 );
 
+const driverLiveSchema = new mongoose.Schema(
+  {
+    currentLocation: {
+      lat: { type: Number, default: null },
+      lng: { type: Number, default: null },
+      updatedAt: { type: Date, default: null },
+      source: { type: String, default: "driver" }
+    },
+    cadenceSec: { type: Number, default: 30 },
+    isMoving: { type: Boolean, default: false },
+    speedKmph: { type: Number, default: null },
+    etaToDestinationMin: { type: Number, default: null },
+    distanceToDestinationKm: { type: Number, default: null }
+  },
+  { _id: false }
+);
+
+const driverLocationPointSchema = new mongoose.Schema(
+  {
+    lat: { type: Number, required: true },
+    lng: { type: Number, required: true },
+    isMoving: { type: Boolean, default: false },
+    cadenceSec: { type: Number, default: 30 },
+    speedKmph: { type: Number, default: null },
+    recordedAt: { type: Date, default: Date.now }
+  },
+  { _id: false }
+);
+
 const transferSchema = new mongoose.Schema(
   {
     patientName: { type: String, required: true, trim: true },
@@ -104,6 +133,8 @@ const transferSchema = new mongoose.Schema(
     },
     dispatchMeta: { type: dispatchMetaSchema, default: () => ({}) },
     driverTimeline: { type: [driverTimelineSchema], default: [] },
+    driverLive: { type: driverLiveSchema, default: () => ({}) },
+    driverLocationTimeline: { type: [driverLocationPointSchema], default: [] },
     reservationStatus: {
       type: String,
       enum: ["none", "reserved", "occupied", "released"],

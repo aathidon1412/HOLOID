@@ -15,6 +15,25 @@ const getAvailableBeds = (hospital, type) => {
   return 0;
 };
 
+const getHospitalCoordinates = (hospital) => {
+  if (!hospital?.location) return null;
+
+  if (typeof hospital.location.lat === "number" && typeof hospital.location.lng === "number") {
+    return { lat: hospital.location.lat, lng: hospital.location.lng };
+  }
+
+  const point = hospital.location.coordinates?.coordinates;
+  if (Array.isArray(point) && point.length === 2) {
+    const lng = Number(point[0]);
+    const lat = Number(point[1]);
+    if (!Number.isNaN(lat) && !Number.isNaN(lng)) {
+      return { lat, lng };
+    }
+  }
+
+  return null;
+};
+
 const getTotalBeds = (hospital, type, available) => {
   if (type === "generalBeds") {
     return hospital.resources?.totalGeneralBeds || hospital.capacity?.totalBeds || available;
@@ -149,9 +168,99 @@ const listAuditLogs = async (req, res) => {
   return res.status(200).json({ count: logs.length, logs });
 };
 
+const listLiveFleet = async (req, res) => {
+  const activeTransfers = await Transfer.find({
+    status: { $in: ["requested", "dispatched", "in_transit"] },
+    assignedAmbulance: { $ne: null }
+  })
+    .sort({ updatedAt: -1 })
+    .populate("fromHospital", "name region location")
+    .populate("toHospital", "name region location")
+    .populate("assignedAmbulance", "vehicleNumber label status")
+    .populate("assignedDriver", "name email")
+    .lean();
+
+  const fleet = activeTransfers.map((transfer) => {
+    const liveLocation = transfer.driverLive?.currentLocation;
+    const destinationCoordinates = getHospitalCoordinates(transfer.toHospital);
+    const originCoordinates = getHospitalCoordinates(transfer.fromHospital);
+
+    const marker =
+      liveLocation && typeof liveLocation.lat === "number" && typeof liveLocation.lng === "number"
+        ? {
+            lat: liveLocation.lat,
+            lng: liveLocation.lng,
+            source: "driver",
+            updatedAt: liveLocation.updatedAt || null
+          }
+        : destinationCoordinates
+        ? {
+            lat: destinationCoordinates.lat,
+            lng: destinationCoordinates.lng,
+            source: "destination",
+            updatedAt: null
+          }
+        : null;
+
+    return {
+      transferId: String(transfer._id),
+      patientName: transfer.patientName,
+      requiredBedType: transfer.requiredBedType,
+      transferStatus: transfer.status,
+      dispatchStatus: transfer.dispatchStatus,
+      driverWorkflowStatus: transfer.driverWorkflowStatus,
+      fromHospital: {
+        id: transfer.fromHospital?._id ? String(transfer.fromHospital._id) : "",
+        name: transfer.fromHospital?.name || "",
+        region: transfer.fromHospital?.region || "",
+        coordinates: originCoordinates
+      },
+      toHospital: {
+        id: transfer.toHospital?._id ? String(transfer.toHospital._id) : "",
+        name: transfer.toHospital?.name || "",
+        region: transfer.toHospital?.region || "",
+        coordinates: destinationCoordinates
+      },
+      ambulance: {
+        id: transfer.assignedAmbulance?._id ? String(transfer.assignedAmbulance._id) : "",
+        vehicleNumber: transfer.assignedAmbulance?.vehicleNumber || "",
+        label: transfer.assignedAmbulance?.label || "",
+        status: transfer.assignedAmbulance?.status || ""
+      },
+      driver: {
+        id: transfer.assignedDriver?._id ? String(transfer.assignedDriver._id) : "",
+        name: transfer.assignedDriver?.name || ""
+      },
+      marker,
+      cadenceSec: transfer.driverLive?.cadenceSec || null,
+      isMoving: !!transfer.driverLive?.isMoving,
+      speedKmph: transfer.driverLive?.speedKmph ?? null,
+      etaToDestinationMin: transfer.driverLive?.etaToDestinationMin ?? transfer.route?.durationMin ?? null,
+      distanceToDestinationKm: transfer.driverLive?.distanceToDestinationKm ?? transfer.route?.distanceKm ?? null,
+      updatedAt: transfer.updatedAt
+    };
+  });
+
+  const inTransit = fleet.filter((item) => item.transferStatus === "in_transit").length;
+  const awaitingDriver = fleet.filter((item) => item.dispatchStatus === "pending_driver").length;
+  const accepted = fleet.filter((item) => item.dispatchStatus === "accepted").length;
+
+  return res.status(200).json({
+    count: fleet.length,
+    fleet,
+    metrics: {
+      activeTransfers: fleet.length,
+      inTransit,
+      awaitingDriver,
+      accepted
+    }
+  });
+};
+
 module.exports = {
   getRegionOccupancySummary,
   listCriticalHospitals,
   listTransferHistory,
-  listAuditLogs
+  listAuditLogs,
+  listLiveFleet
 };

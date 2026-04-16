@@ -21,6 +21,7 @@ const {
   listDriverDispatches,
   respondToDriverDispatch,
   updateDriverDispatchProgress,
+  updateDriverLocation,
   updateHospitalResources
 } = require("../controllers/logisticsController");
 
@@ -88,6 +89,12 @@ router.patch(
   authenticate,
   authorizeRoles(ROLES.AMBULANCE_DRIVER),
   updateDriverDispatchProgress
+);
+router.patch(
+  "/drivers/me/dispatches/:transferId/location",
+  authenticate,
+  authorizeRoles(ROLES.AMBULANCE_DRIVER),
+  updateDriverLocation
 );
 
 module.exports = router;

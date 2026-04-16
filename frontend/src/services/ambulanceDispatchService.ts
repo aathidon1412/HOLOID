@@ -24,6 +24,19 @@ export interface DispatchTransfer {
     rejectionReason?: string;
     lastStatusAt?: string;
   };
+  driverLive?: {
+    currentLocation?: {
+      lat?: number;
+      lng?: number;
+      updatedAt?: string;
+      source?: string;
+    };
+    cadenceSec?: number;
+    isMoving?: boolean;
+    speedKmph?: number | null;
+    etaToDestinationMin?: number | null;
+    distanceToDestinationKm?: number | null;
+  };
   fromHospital?: {
     _id?: string;
     name?: string;
@@ -73,5 +86,32 @@ export const ambulanceDispatchService = {
   async updateProgress(transferId: string, payload: { status: DriverProgressStatus; note?: string }) {
     const res = await axiosInstance.patch(`/logistics/drivers/me/dispatches/${transferId}/progress`, payload);
     return res.data?.transfer as DispatchTransfer;
+  },
+
+  async updateLocation(
+    transferId: string,
+    payload: { lat: number; lng: number; isMoving?: boolean; speedKmph?: number | null }
+  ) {
+    const res = await axiosInstance.patch(`/logistics/drivers/me/dispatches/${transferId}/location`, payload);
+    return {
+      transfer: res.data?.transfer as DispatchTransfer,
+      cadenceSec: Number(res.data?.cadenceSec || 30),
+    };
+  },
+
+  async getPushPublicKey() {
+    const res = await axiosInstance.get("/notifications/push/public-key");
+    return {
+      publicKey: String(res.data?.publicKey || ""),
+      enabled: Boolean(res.data?.enabled),
+    };
+  },
+
+  async subscribePushAlerts(subscription: PushSubscriptionJSON) {
+    await axiosInstance.post("/notifications/push/subscribe", { subscription });
+  },
+
+  async unsubscribePushAlerts(endpoint: string) {
+    await axiosInstance.delete("/notifications/push/subscribe", { data: { endpoint } });
   },
 };

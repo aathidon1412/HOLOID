@@ -1,64 +1,70 @@
-import { useMemo, useState } from "react";
+import { Fragment, useCallback, useMemo, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { CircleMarker, MapContainer, Polyline, Popup, TileLayer } from "react-leaflet";
+
 import TopBar from "@/components/TopBar";
+import { useSocket } from "@/hooks/useSocket";
+import { govCommandCenterService, LiveFleetItem, RegionOccupancy } from "@/services/govCommandCenterService";
 
-type MarkerStatus = "vacant" | "warning" | "critical";
+type FleetStatus = "active" | "waiting" | "critical";
 
-const regions = [
-  { name: "South Zone", hospitals: 12, status: "warning" as const },
-  { name: "North Zone", hospitals: 8, status: "vacant" as const },
-  { name: "Central Zone", hospitals: 10, status: "critical" as const },
-  { name: "East Zone", hospitals: 6, status: "vacant" as const },
-  { name: "West Zone", hospitals: 9, status: "warning" as const },
-  { name: "North-East Zone", hospitals: 4, status: "vacant" as const },
-];
+const mapCenter: [number, number] = [20.5937, 78.9629];
 
-const hospitalMarkers = [
-  { x: 200, y: 180, name: "City General", pct: 47, status: "vacant" as const, region: "South Zone" },
-  { x: 280, y: 120, name: "Metro City Hospital", pct: 93, status: "critical" as const, region: "Central Zone" },
-  { x: 150, y: 100, name: "Apollo Medical", pct: 75, status: "warning" as const, region: "North Zone" },
-  { x: 320, y: 200, name: "District General", pct: 94, status: "critical" as const, region: "Central Zone" },
-  { x: 100, y: 220, name: "St. Mary's", pct: 40, status: "vacant" as const, region: "East Zone" },
-  { x: 250, y: 250, name: "Mercy General", pct: 63, status: "vacant" as const, region: "South Zone" },
-  { x: 180, y: 60, name: "Sunrise Medical", pct: 96, status: "critical" as const, region: "West Zone" },
-  { x: 350, y: 80, name: "People's Hospital", pct: 90, status: "critical" as const, region: "South Zone" },
-  { x: 90, y: 150, name: "North-East Community", pct: 33, status: "vacant" as const, region: "North-East Zone" },
-];
-
-const markerColors: Record<MarkerStatus, string> = {
-  vacant: "#22C55E",
-  warning: "#F59E0B",
-  critical: "#EF4444",
+const getFleetStatus = (item: LiveFleetItem): FleetStatus => {
+  if (item.dispatchStatus === "pending_driver") return "waiting";
+  if (item.transferStatus === "in_transit") return "active";
+  return "critical";
 };
 
-const statusStyles: Record<MarkerStatus, { label: string; dotClass: string; chipClass: string }> = {
-  vacant: {
-    label: "Normal",
-    dotClass: "status-dot-vacant",
-    chipClass: "border border-status-vacant/30 bg-status-vacant/10 text-status-vacant",
-  },
-  warning: {
-    label: "Warning",
-    dotClass: "status-dot-maint",
-    chipClass: "border border-status-warning/30 bg-status-warning/10 text-status-warning",
-  },
-  critical: {
-    label: "Critical",
-    dotClass: "status-dot-crit",
-    chipClass: "border border-status-critical/30 bg-status-critical/10 text-status-critical",
-  },
+const markerPalette: Record<FleetStatus, string> = {
+  active: "#16a34a",
+  waiting: "#f59e0b",
+  critical: "#ef4444",
+};
+
+const occupancyClass = (region: RegionOccupancy) => {
+  const icuRate = Number(region.occupancyRate?.icuBeds || 0);
+  if (icuRate >= 0.9) return "border-status-critical/40 bg-status-critical/10 text-status-critical";
+  if (icuRate >= 0.7) return "border-status-warning/40 bg-status-warning/10 text-status-warning";
+  return "border-status-vacant/40 bg-status-vacant/10 text-status-vacant";
 };
 
 const GovMap = () => {
+  const queryClient = useQueryClient();
   const [selectedRegion, setSelectedRegion] = useState<string | null>(null);
-  const [hoveredMarker, setHoveredMarker] = useState<number | null>(null);
+
+  const refreshLiveMap = useCallback(() => {
+    queryClient.invalidateQueries({ queryKey: ["gov-live-fleet"] });
+    queryClient.invalidateQueries({ queryKey: ["gov-region-occupancy"] });
+  }, [queryClient]);
+
+  useSocket({ eventName: "dispatch-assigned", onEvent: refreshLiveMap });
+  useSocket({ eventName: "dispatch-responded", onEvent: refreshLiveMap });
+  useSocket({ eventName: "dispatch-progress-updated", onEvent: refreshLiveMap });
+  useSocket({ eventName: "dispatch-location-updated", onEvent: refreshLiveMap });
+  useSocket({ eventName: "bed-slot-status-changed", onEvent: refreshLiveMap });
+
+  const { data: occupancyRegions = [] } = useQuery({
+    queryKey: ["gov-region-occupancy"],
+    queryFn: govCommandCenterService.getRegionOccupancySummary,
+    refetchInterval: 30000,
+  });
+
+  const { data: liveFleetData } = useQuery({
+    queryKey: ["gov-live-fleet"],
+    queryFn: govCommandCenterService.getLiveFleet,
+    refetchInterval: 15000,
+  });
 
   const visibleMarkers = useMemo(() => {
+    const fleet = liveFleetData?.fleet || [];
+
     if (!selectedRegion) {
-      return hospitalMarkers;
+      return fleet;
     }
 
-    return hospitalMarkers.filter((marker) => marker.region === selectedRegion);
-  }, [selectedRegion]);
+    return fleet.filter((marker) => marker.toHospital?.region === selectedRegion);
+  }, [liveFleetData?.fleet, selectedRegion]);
 
   return (
     <div>
@@ -68,8 +74,7 @@ const GovMap = () => {
         <div className="grid grid-cols-1 lg:grid-cols-[220px_minmax(0,1fr)] gap-4">
           <div className="space-y-2">
             <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Regions</p>
-            {regions.map((region) => {
-              const style = statusStyles[region.status];
+            {occupancyRegions.map((region) => {
               const selected = selectedRegion === region.name;
 
               return (
@@ -85,8 +90,8 @@ const GovMap = () => {
                   <p className="text-sm font-medium text-foreground">{region.name}</p>
                   <div className="mt-1 flex items-center gap-2">
                     <p className="text-xs text-muted-foreground">{region.hospitals} hospitals</p>
-                    <span className={`inline-flex rounded-full px-2 py-0.5 text-[11px] font-medium ${style.chipClass}`}>
-                      {style.label}
+                    <span className={`inline-flex rounded-full border px-2 py-0.5 text-[11px] font-medium ${occupancyClass(region)}`}>
+                      ICU {(Number(region.occupancyRate?.icuBeds || 0) * 100).toFixed(0)}%
                     </span>
                   </div>
                 </button>
@@ -95,56 +100,78 @@ const GovMap = () => {
           </div>
 
           <div className="rounded-lg border border-border bg-card p-4">
-            <svg viewBox="0 0 450 320" className="w-full" style={{ maxHeight: 500 }}>
-              <path d="M50,50 L200,30 L350,50 L400,150 L380,280 L200,300 L80,270 L30,180 Z" fill="#1E2A38" stroke="#2E3D50" strokeWidth="2" />
-              <path d="M120,80 L250,70 L300,120 L280,200 L150,210 L100,160 Z" fill="#253245" stroke="#2E3D50" strokeWidth="1" />
-              <path d="M250,70 L380,60 L400,150 L340,180 L300,120 Z" fill="#253245" stroke="#2E3D50" strokeWidth="1" />
+            <div className="h-[520px] w-full overflow-hidden rounded-lg border border-border">
+              <MapContainer center={mapCenter} zoom={5} scrollWheelZoom className="h-full w-full">
+                <TileLayer
+                  attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+                  url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                />
 
-              {visibleMarkers.map((marker, index) => (
-                <g
-                  key={marker.name}
-                  onMouseEnter={() => setHoveredMarker(index)}
-                  onMouseLeave={() => setHoveredMarker(null)}
-                  className="cursor-pointer"
-                >
-                  <circle
-                    cx={marker.x}
-                    cy={marker.y}
-                    r={hoveredMarker === index ? 10 : 7}
-                    fill={markerColors[marker.status]}
-                    opacity={0.85}
-                    className="transition-all duration-200"
-                  />
-                  <circle cx={marker.x} cy={marker.y} r={3} fill="#F8FAFC" />
-                  {hoveredMarker === index && (
-                    <g>
-                      <rect x={marker.x + 12} y={marker.y - 22} width={164} height={42} rx={6} fill="#111827" stroke="#334155" />
-                      <text x={marker.x + 18} y={marker.y - 6} fill="#E2E8F0" fontSize="11" fontFamily="Inter, sans-serif">{marker.name}</text>
-                      <text x={marker.x + 18} y={marker.y + 9} fill="#94A3B8" fontSize="10" fontFamily="Inter, sans-serif">{marker.region} · ICU Occupancy: {marker.pct}%</text>
-                    </g>
-                  )}
-                </g>
-              ))}
-            </svg>
+                {visibleMarkers.map((item) => {
+                  if (!item.marker) return null;
+
+                  const status = getFleetStatus(item);
+                  const color = markerPalette[status];
+
+                  const linePath: [number, number][] = [];
+                  if (item.fromHospital.coordinates) {
+                    linePath.push([item.fromHospital.coordinates.lat, item.fromHospital.coordinates.lng]);
+                  }
+                  linePath.push([item.marker.lat, item.marker.lng]);
+                  if (item.toHospital.coordinates) {
+                    linePath.push([item.toHospital.coordinates.lat, item.toHospital.coordinates.lng]);
+                  }
+
+                  return (
+                    <Fragment key={item.transferId}>
+                      {linePath.length >= 2 && (
+                        <Polyline
+                          positions={linePath}
+                          pathOptions={{ color, opacity: 0.45, weight: 3 }}
+                        />
+                      )}
+
+                      <CircleMarker
+                        center={[item.marker.lat, item.marker.lng]}
+                        radius={8}
+                        pathOptions={{ color: "#0f172a", weight: 1, fillColor: color, fillOpacity: 0.95 }}
+                      >
+                        <Popup>
+                          <div className="space-y-1 text-xs">
+                            <p className="font-semibold text-foreground">{item.ambulance.vehicleNumber || "Ambulance"}</p>
+                            <p className="text-muted-foreground">Patient: {item.patientName}</p>
+                            <p className="text-muted-foreground">{item.fromHospital.name} → {item.toHospital.name}</p>
+                            <p className="text-muted-foreground">Dispatch: {item.dispatchStatus}</p>
+                            <p className="text-muted-foreground">Workflow: {item.driverWorkflowStatus}</p>
+                            <p className="text-muted-foreground">ETA: {item.etaToDestinationMin ?? "-"} min</p>
+                            <p className="text-muted-foreground">Distance: {item.distanceToDestinationKm ?? "-"} km</p>
+                          </div>
+                        </Popup>
+                      </CircleMarker>
+                    </Fragment>
+                  );
+                })}
+              </MapContainer>
+            </div>
 
             <div className="mt-4 flex flex-wrap items-center justify-center gap-6">
               <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                <span className="status-dot status-dot-vacant" />
-                Vacant
+                <span className="h-2.5 w-2.5 rounded-full bg-status-vacant" />
+                In transit
               </div>
               <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                <span className="status-dot status-dot-maint" />
-                Warning
+                <span className="h-2.5 w-2.5 rounded-full bg-status-warning" />
+                Pending driver
               </div>
               <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                <span className="status-dot status-dot-crit" />
-                Critical
+                <span className="h-2.5 w-2.5 rounded-full bg-status-critical" />
+                Dispatch attention
               </div>
             </div>
 
             {selectedRegion && (
               <p className="mt-3 text-center text-xs text-muted-foreground">
-                Showing hospitals in <span className="font-medium text-foreground">{selectedRegion}</span>
+                Showing active fleet for <span className="font-medium text-foreground">{selectedRegion}</span>
               </p>
             )}
           </div>

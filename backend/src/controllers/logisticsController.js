@@ -9,6 +9,7 @@ const { normalizeBedType, ALLOWED_BED_TYPES } = require("../utils/bedType");
 const { haversineDistanceKm, getRouteMetadata } = require("../services/mapService");
 const { createAuditLog } = require("../services/auditService");
 const { sendCriticalAlertEmail, sendTransferEventEmail } = require("../services/emailService");
+const { sendPushToUser } = require("../services/pushService");
 const ROLES = require("../utils/roles");
 const {
   reserveBedSlot,
@@ -37,7 +38,8 @@ const BED_SLOT_SOCKET_EVENTS = {
 const DISPATCH_SOCKET_EVENTS = {
   ASSIGNED: "dispatch-assigned",
   RESPONDED: "dispatch-responded",
-  PROGRESS: "dispatch-progress-updated"
+  PROGRESS: "dispatch-progress-updated",
+  LOCATION: "dispatch-location-updated"
 };
 
 const DRIVER_PROGRESS_STATUS_MAP = {
@@ -181,6 +183,8 @@ const emitSocketEvent = (req, { eventName, hospitalId, region, payload }) => {
   if (packet.region) {
     io.to(packet.region).emit(eventName, packet);
   }
+
+  io.to("command-center").emit(eventName, packet);
 };
 
 const emitBedSlotLifecycleEvent = (
@@ -269,6 +273,65 @@ const syncHospitalAmbulanceAvailability = async ({ hospitalId, session }) => {
 
   hospital.resources.ambulancesAvailable = Number(availableCount || 0);
   await saveWithSession(hospital, session);
+};
+
+const movingWorkflowStatuses = new Set(["en_route", "in_transit"]);
+
+const getAdaptiveCadenceSec = ({ isMoving, workflowStatus }) => {
+  if (typeof isMoving === "boolean") {
+    return isMoving ? 5 : 30;
+  }
+
+  if (movingWorkflowStatuses.has(String(workflowStatus || ""))) {
+    return 5;
+  }
+
+  return 30;
+};
+
+const getTransferDestinationCoordinates = (transfer) => {
+  if (!transfer?.toHospital) return null;
+  return getHospitalCoordinates(transfer.toHospital);
+};
+
+const notifyDriverDispatchChannels = async ({ transfer, driver, note }) => {
+  if (!transfer?.assignedDriver || !driver) return;
+
+  const title = "New Ambulance Dispatch";
+  const body = `Transfer for ${transfer.patientName || "patient"} to ${
+    transfer.toHospital?.name || "destination hospital"
+  } is awaiting your response.`;
+
+  const pushResult = await sendPushToUser({
+    userId: transfer.assignedDriver,
+    title,
+    body,
+    data: {
+      type: "dispatch_assigned",
+      transferId: String(transfer._id),
+      dispatchStatus: transfer.dispatchStatus,
+      patientName: transfer.patientName,
+      toHospitalName: transfer.toHospital?.name || "",
+      requiredBedType: transfer.requiredBedType
+    }
+  });
+
+  if (driver.email) {
+    await sendTransferEventEmail({
+      to: driver.email,
+      transferId: String(transfer._id),
+      status: "dispatch_assigned",
+      patientName: transfer.patientName,
+      fromHospitalName: transfer.fromHospital?.name || "Unknown Source",
+      toHospitalName: transfer.toHospital?.name || "Unknown Destination",
+      note:
+        note ||
+        (pushResult.delivered > 0
+          ? "Dispatch also delivered as push alert"
+          : "Push notification unavailable, using email fallback"),
+      route: transfer.route
+    });
+  }
 };
 
 const searchHospitalsByResource = async (req, res) => {
@@ -576,7 +639,8 @@ const requestPatientTransfer = async (req, res) => {
           ambulanceId: candidateAmbulance._id,
           vehicleNumber: candidateAmbulance.vehicleNumber,
           driverId: assignedDriver._id,
-          driverName: assignedDriver.name
+          driverName: assignedDriver.name,
+          driverEmail: assignedDriver.email || ""
         };
       }
 
@@ -709,6 +773,15 @@ const requestPatientTransfer = async (req, res) => {
           name: autoDispatchSnapshot.driverName
         }
       }
+    });
+
+    await notifyDriverDispatchChannels({
+      transfer: response,
+      driver: {
+        _id: autoDispatchSnapshot.driverId,
+        email: autoDispatchSnapshot.driverEmail || ""
+      },
+      note: "Automatic dispatch assignment created"
     });
   }
 
@@ -1932,6 +2005,12 @@ const assignTransferDispatch = async (req, res) => {
     }
   });
 
+  await notifyDriverDispatchChannels({
+    transfer,
+    driver: transfer?.assignedDriver,
+    note: "Dispatch assigned by operations team"
+  });
+
   return res.status(200).json({ transfer });
 };
 
@@ -2228,6 +2307,169 @@ const updateDriverDispatchProgress = async (req, res) => {
   return res.status(200).json({ transfer });
 };
 
+const updateDriverLocation = async (req, res) => {
+  const driverId = req.user?.id;
+  const { transferId } = req.params;
+  const { lat, lng, isMoving, speedKmph } = req.body;
+
+  if (!mongoose.Types.ObjectId.isValid(transferId)) {
+    return res.status(400).json({ message: "transferId must be a valid ObjectId" });
+  }
+
+  const parsedLat = Number(lat);
+  const parsedLng = Number(lng);
+  const parsedSpeedKmph = speedKmph === undefined || speedKmph === null ? null : Number(speedKmph);
+
+  if (Number.isNaN(parsedLat) || Number.isNaN(parsedLng)) {
+    return res.status(400).json({ message: "lat and lng are required and must be numeric" });
+  }
+
+  if (Math.abs(parsedLat) > 90 || Math.abs(parsedLng) > 180) {
+    return res.status(400).json({ message: "lat/lng values are outside valid coordinate bounds" });
+  }
+
+  if (parsedSpeedKmph !== null && (Number.isNaN(parsedSpeedKmph) || parsedSpeedKmph < 0)) {
+    return res.status(400).json({ message: "speedKmph must be a positive number" });
+  }
+
+  let updatedTransfer = null;
+  let hospitalRegion = "";
+  let routeMetadata = null;
+
+  try {
+    const result = await runWithOptionalTransaction(async (session) => {
+      const transfer = await withSession(
+        Transfer.findById(transferId)
+          .populate("fromHospital")
+          .populate("toHospital")
+          .populate("assignedAmbulance"),
+        session
+      );
+
+      if (!transfer) {
+        throw new Error("Transfer not found");
+      }
+
+      if (!transfer.assignedDriver || String(transfer.assignedDriver) !== String(driverId)) {
+        throw new Error("Dispatch is not assigned to this driver");
+      }
+
+      if (transfer.dispatchStatus !== "accepted") {
+        throw new Error("Dispatch must be accepted before location streaming");
+      }
+
+      if (["completed", "cancelled"].includes(transfer.status)) {
+        throw new Error("Transfer is already closed");
+      }
+
+      hospitalRegion = transfer.toHospital?.region || transfer.toHospital?.location?.state || "";
+
+      const cadenceSec = getAdaptiveCadenceSec({
+        isMoving,
+        workflowStatus: transfer.driverWorkflowStatus
+      });
+
+      const currentPoint = {
+        lat: parsedLat,
+        lng: parsedLng,
+        updatedAt: new Date(),
+        source: "driver"
+      };
+
+      const destinationCoordinates = getTransferDestinationCoordinates(transfer);
+      if (destinationCoordinates) {
+        routeMetadata = await getRouteMetadata(
+          { lat: parsedLat, lng: parsedLng },
+          destinationCoordinates
+        );
+      }
+
+      transfer.driverLive = {
+        currentLocation: currentPoint,
+        cadenceSec,
+        isMoving: typeof isMoving === "boolean" ? isMoving : cadenceSec === 5,
+        speedKmph: parsedSpeedKmph,
+        etaToDestinationMin:
+          routeMetadata && Number.isFinite(routeMetadata.durationMin)
+            ? Number(routeMetadata.durationMin)
+            : transfer.driverLive?.etaToDestinationMin || null,
+        distanceToDestinationKm:
+          routeMetadata && Number.isFinite(routeMetadata.distanceKm)
+            ? Number(routeMetadata.distanceKm)
+            : transfer.driverLive?.distanceToDestinationKm || null
+      };
+
+      transfer.driverLocationTimeline.push({
+        lat: parsedLat,
+        lng: parsedLng,
+        isMoving: typeof isMoving === "boolean" ? isMoving : cadenceSec === 5,
+        cadenceSec,
+        speedKmph: parsedSpeedKmph,
+        recordedAt: new Date()
+      });
+
+      if (transfer.driverLocationTimeline.length > 120) {
+        transfer.driverLocationTimeline = transfer.driverLocationTimeline.slice(-120);
+      }
+
+      transfer.dispatchMeta.lastStatusAt = new Date();
+
+      await saveWithSession(transfer, session);
+      return transfer;
+    });
+
+    updatedTransfer = result;
+  } catch (error) {
+    const message = String(error && error.message ? error.message : "");
+
+    if (message.includes("Transfer not found")) {
+      return res.status(404).json({ message });
+    }
+
+    if (
+      message.includes("not assigned") ||
+      message.includes("must be accepted") ||
+      message.includes("already closed")
+    ) {
+      return res.status(409).json({ message });
+    }
+
+    throw error;
+  }
+
+  const transfer = await Transfer.findById(updatedTransfer._id)
+    .populate("fromHospital", "name region")
+    .populate("toHospital", "name region")
+    .populate("assignedAmbulance", "vehicleNumber label status")
+    .populate("assignedDriver", "name email role")
+    .lean();
+
+  emitDispatchEvent(req, {
+    eventName: DISPATCH_SOCKET_EVENTS.LOCATION,
+    hospitalId: transfer?.toHospital?._id,
+    region: transfer?.toHospital?.region || hospitalRegion,
+    driverId: req.user?.id,
+    payload: {
+      transferId: String(transfer?._id),
+      transferStatus: transfer?.status,
+      dispatchStatus: transfer?.dispatchStatus,
+      driverWorkflowStatus: transfer?.driverWorkflowStatus,
+      location: transfer?.driverLive?.currentLocation || null,
+      cadenceSec: transfer?.driverLive?.cadenceSec || 30,
+      isMoving: !!transfer?.driverLive?.isMoving,
+      speedKmph: transfer?.driverLive?.speedKmph ?? null,
+      etaToDestinationMin: transfer?.driverLive?.etaToDestinationMin ?? null,
+      distanceToDestinationKm: transfer?.driverLive?.distanceToDestinationKm ?? null,
+      routeSource: routeMetadata?.source || null
+    }
+  });
+
+  return res.status(200).json({
+    transfer,
+    cadenceSec: transfer?.driverLive?.cadenceSec || 30
+  });
+};
+
 const updateHospitalResources = async (req, res) => {
   const { hospitalId } = req.params;
   const { resources, actor, notificationEmails } = req.body;
@@ -2313,5 +2555,6 @@ module.exports = {
   listDriverDispatches,
   respondToDriverDispatch,
   updateDriverDispatchProgress,
+  updateDriverLocation,
   updateHospitalResources
 };

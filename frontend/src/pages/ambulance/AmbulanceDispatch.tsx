@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 
@@ -31,9 +31,24 @@ const formatBedLabel = (value?: string) => {
   return value;
 };
 
+const urlBase64ToUint8Array = (base64String: string) => {
+  const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
+  const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
+  const rawData = window.atob(base64);
+  const outputArray = new Uint8Array(rawData.length);
+
+  for (let i = 0; i < rawData.length; i += 1) {
+    outputArray[i] = rawData.charCodeAt(i);
+  }
+
+  return outputArray;
+};
+
 const AmbulanceDispatch = () => {
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState<"inbox" | "history">("inbox");
+  const [locationCadenceSec, setLocationCadenceSec] = useState<number>(30);
+  const hasShownLocationErrorRef = useRef(false);
 
   const refreshDispatchData = useCallback(() => {
     queryClient.invalidateQueries({ queryKey: ["driver-dispatch-inbox"] });
@@ -43,6 +58,7 @@ const AmbulanceDispatch = () => {
   useSocket({ eventName: "dispatch-assigned", onEvent: refreshDispatchData });
   useSocket({ eventName: "dispatch-responded", onEvent: refreshDispatchData });
   useSocket({ eventName: "dispatch-progress-updated", onEvent: refreshDispatchData });
+  useSocket({ eventName: "dispatch-location-updated", onEvent: refreshDispatchData });
 
   const { data: inbox = [], isLoading: loadingInbox } = useQuery<DispatchTransfer[]>({
     queryKey: ["driver-dispatch-inbox"],
@@ -85,6 +101,20 @@ const AmbulanceDispatch = () => {
     },
   });
 
+  const locationMutation = useMutation({
+    mutationFn: ({ transferId, lat, lng, isMoving, speedKmph }: {
+      transferId: string;
+      lat: number;
+      lng: number;
+      isMoving: boolean;
+      speedKmph?: number | null;
+    }) => ambulanceDispatchService.updateLocation(transferId, { lat, lng, isMoving, speedKmph }),
+    onSuccess: (result) => {
+      setLocationCadenceSec(result.cadenceSec || 30);
+      hasShownLocationErrorRef.current = false;
+    },
+  });
+
   const inboxCards = useMemo(() => {
     return inbox.map((transfer) => {
       const nextStep = getNextProgressStep(transfer.driverWorkflowStatus);
@@ -92,13 +122,138 @@ const AmbulanceDispatch = () => {
     });
   }, [inbox]);
 
+  const activeLiveTransfer = useMemo(() => {
+    return inbox.find(
+      (transfer) =>
+        transfer.dispatchStatus === "accepted" &&
+        transfer.driverWorkflowStatus !== "handover_complete" &&
+        ["requested", "dispatched", "in_transit"].includes(transfer.status)
+    );
+  }, [inbox]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const setupPush = async () => {
+      if (!("serviceWorker" in navigator) || !("PushManager" in window) || !("Notification" in window)) {
+        return;
+      }
+
+      const keyResponse = await ambulanceDispatchService.getPushPublicKey();
+      if (!keyResponse.enabled || !keyResponse.publicKey) {
+        return;
+      }
+
+      const registration = await navigator.serviceWorker.register("/sw.js");
+
+      let permission = Notification.permission;
+      if (permission === "default") {
+        permission = await Notification.requestPermission();
+      }
+
+      if (permission !== "granted") {
+        return;
+      }
+
+      let subscription = await registration.pushManager.getSubscription();
+
+      if (!subscription) {
+        subscription = await registration.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: urlBase64ToUint8Array(keyResponse.publicKey),
+        });
+      }
+
+      if (cancelled || !subscription) {
+        return;
+      }
+
+      await ambulanceDispatchService.subscribePushAlerts(subscription.toJSON());
+    };
+
+    setupPush().catch(() => {
+      // Push support is best-effort and should not block dispatch workflow.
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!activeLiveTransfer?._id) {
+      setLocationCadenceSec(30);
+      return;
+    }
+
+    if (!("geolocation" in navigator)) {
+      return;
+    }
+
+    let disposed = false;
+    let intervalId: number | null = null;
+
+    const workflowStatus = activeLiveTransfer.driverWorkflowStatus;
+    const isMovingByStatus = workflowStatus === "en_route" || workflowStatus === "in_transit";
+    const cadence = isMovingByStatus ? 5 : 30;
+    setLocationCadenceSec(cadence);
+
+    const streamLocation = () => {
+      navigator.geolocation.getCurrentPosition(
+        async (position) => {
+          if (disposed) return;
+
+          const speedMetersPerSecond = Number(position.coords.speed ?? 0);
+          const speedKmph = Number.isFinite(speedMetersPerSecond)
+            ? Number((Math.max(0, speedMetersPerSecond) * 3.6).toFixed(2))
+            : null;
+
+          try {
+            await locationMutation.mutateAsync({
+              transferId: activeLiveTransfer._id,
+              lat: position.coords.latitude,
+              lng: position.coords.longitude,
+              isMoving: isMovingByStatus,
+              speedKmph,
+            });
+          } catch {
+            if (!hasShownLocationErrorRef.current) {
+              hasShownLocationErrorRef.current = true;
+              toast.error("Live location update failed. Retrying in background.");
+            }
+          }
+        },
+        () => {
+          // Silent geolocation failures avoid noisy repeated toasts on permission denial.
+        },
+        {
+          enableHighAccuracy: true,
+          timeout: 10000,
+          maximumAge: cadence * 1000,
+        }
+      );
+    };
+
+    streamLocation();
+    intervalId = window.setInterval(streamLocation, cadence * 1000);
+
+    return () => {
+      disposed = true;
+      if (intervalId) {
+        window.clearInterval(intervalId);
+      }
+    };
+  }, [activeLiveTransfer?._id, activeLiveTransfer?.driverWorkflowStatus, locationMutation]);
+
   return (
     <div>
       <TopBar title="Ambulance Dispatch" />
       <div className="p-4 md:p-6 space-y-4 max-w-4xl mx-auto">
         <div className="flex items-center justify-between">
           <LiveIndicator />
-          <span className="text-xs text-muted-foreground">Mobile driver workflow</span>
+          <span className="text-xs text-muted-foreground">
+            Live cadence: {locationCadenceSec}s {activeLiveTransfer ? "(tracking active dispatch)" : "(idle)"}
+          </span>
         </div>
 
         <div className="rounded-lg border border-border bg-card p-2 flex gap-2">

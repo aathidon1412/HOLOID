@@ -35,6 +35,9 @@ export const SocketProvider = ({ children }: { children: ReactNode }) => {
       if (user?.hospital) {
         nextSocket.emit("subscribe-hospital", user.hospital);
       }
+      if (user?.role === "GOVERNMENT_OFFICIAL") {
+        nextSocket.emit("join-command-center");
+      }
     };
 
     const handleDisconnect = () => {
@@ -57,7 +60,7 @@ export const SocketProvider = ({ children }: { children: ReactNode }) => {
       setSocket(null);
       setIsConnected(false);
     };
-  }, [accessToken, user?.hospital]);
+  }, [accessToken, user?.hospital, user?.role]);
 
   const value = useMemo(() => ({ socket, isConnected }), [socket, isConnected]);
 
