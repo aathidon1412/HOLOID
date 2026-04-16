@@ -23,7 +23,14 @@ router.get("/list", listHospitals);
 router.get(
 	"/",
 	authenticate,
-	authorizeRoles(ROLES.GOVERNMENT_OFFICIAL, ROLES.HOSPITAL_ADMIN, ROLES.DOCTOR),
+	authorizeRoles(
+		ROLES.GOVERNMENT_OFFICIAL,
+		ROLES.HOSPITAL_ADMIN,
+		ROLES.DOCTOR,
+		ROLES.BED_MANAGER,
+		ROLES.DATA_ENTRY,
+		ROLES.AMBULANCE_DRIVER
+	),
 	listHospitalsWithBedStatus
 );
 

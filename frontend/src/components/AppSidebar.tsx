@@ -3,7 +3,7 @@ import { useAuth, UserRole } from "@/contexts/AuthContext";
 import { cn } from "@/lib/utils";
 import {
   LayoutDashboard, ArrowLeftRight, Bell, BarChart3, Settings, LogOut,
-  Stethoscope, ClipboardList, History, MapPin, FileText, Building2, Users
+  Stethoscope, ClipboardList, History, MapPin, FileText, Building2, Users, ClipboardCheck, Truck
 } from "lucide-react";
 import holoidLogo from "@/assets/holoid_logo.png";
 
@@ -41,15 +41,33 @@ const govLinks: SidebarLink[] = [
   { to: "/gov/settings", icon: <Settings size={18} />, label: "Settings" },
 ];
 
+const bedManagerLinks: SidebarLink[] = [
+  { to: "/bed-manager/entry", icon: <ClipboardCheck size={18} />, label: "Bed Assignment" },
+];
+
+const dataEntryLinks: SidebarLink[] = [
+  { to: "/data-entry/entry", icon: <ClipboardCheck size={18} />, label: "Live Bed Updates" },
+];
+
+const ambulanceDriverLinks: SidebarLink[] = [
+  { to: "/ambulance/dispatch", icon: <Truck size={18} />, label: "Dispatch Board" },
+];
+
 const linksByRole: Record<UserRole, SidebarLink[]> = {
   HOSPITAL_ADMIN: adminLinks,
   DOCTOR: doctorLinks,
+  BED_MANAGER: bedManagerLinks,
+  DATA_ENTRY: dataEntryLinks,
+  AMBULANCE_DRIVER: ambulanceDriverLinks,
   GOVERNMENT_OFFICIAL: govLinks,
 };
 
 const roleLabels: Record<UserRole, string> = {
   HOSPITAL_ADMIN: "Hospital Admin",
   DOCTOR: "Doctor",
+  BED_MANAGER: "Bed Manager",
+  DATA_ENTRY: "Data Entry",
+  AMBULANCE_DRIVER: "Ambulance Driver",
   GOVERNMENT_OFFICIAL: "Gov. Official",
 };
 

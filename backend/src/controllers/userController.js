@@ -6,6 +6,13 @@ const ROLES = require("../utils/roles");
 const tokenService = require("../services/tokenService");
 const { sendActivationEmail } = require("../services/emailService");
 
+const HOSPITAL_APPROVABLE_ROLES = [
+    ROLES.DOCTOR,
+    ROLES.BED_MANAGER,
+    ROLES.DATA_ENTRY,
+    ROLES.AMBULANCE_DRIVER,
+];
+
 const approveUser = catchAsync(async (req, res) => {
     const approver = req.user;
     const userId = req.params.id;
@@ -22,10 +29,10 @@ const approveUser = catchAsync(async (req, res) => {
     // GOV can approve HOSPITAL_ADMIN
     if (approver.role === ROLES.GOVERNMENT_OFFICIAL && user.role === ROLES.HOSPITAL_ADMIN) {
         // allowed
-    } else if (approver.role === ROLES.HOSPITAL_ADMIN && user.role === ROLES.DOCTOR) {
-        // hospital admins may approve doctors for their own hospital
+    } else if (approver.role === ROLES.HOSPITAL_ADMIN && HOSPITAL_APPROVABLE_ROLES.includes(user.role)) {
+        // hospital admins may approve operational users for their own hospital
         if (!approver.hospital || !user.hospital || approver.hospital.toString() !== user.hospital.toString()) {
-            throw new ApiError(403, "Cannot approve doctor from another hospital", "FORBIDDEN");
+            throw new ApiError(403, "Cannot approve user from another hospital", "FORBIDDEN");
         }
     } else {
         throw new ApiError(403, "Insufficient permissions to approve this user", "FORBIDDEN");
@@ -62,8 +69,8 @@ const listPendingUsers = catchAsync(async (req, res) => {
         // GOV sees pending hospital admins
         filter.role = ROLES.HOSPITAL_ADMIN;
     } else if (requester.role === ROLES.HOSPITAL_ADMIN) {
-        // Hospital admin sees pending doctors for their hospital
-        filter.role = ROLES.DOCTOR;
+        // Hospital admin sees pending operational users for their hospital
+        filter.role = { $in: HOSPITAL_APPROVABLE_ROLES };
         if (!requester.hospital) {
             return res.status(200).json(new ApiResponse(200, { users: [] }, "OK"));
         }
@@ -85,12 +92,12 @@ const listAllUsers = catchAsync(async (req, res) => {
         // GOV sees everyone, except other Government Officials
         filter = { role: { $ne: ROLES.GOVERNMENT_OFFICIAL } }; 
     } else if (requester.role === ROLES.HOSPITAL_ADMIN) {
-        // Hospital admin sees only doctors attached to their hospital
+        // Hospital admin sees only operational users attached to their hospital
         if (!requester.hospital) {
             return res.status(200).json(new ApiResponse(200, { users: [] }, "OK"));
         }
         filter.hospital = requester.hospital;
-        filter.role = ROLES.DOCTOR;
+        filter.role = { $in: HOSPITAL_APPROVABLE_ROLES };
     } else {
         throw new ApiError(403, "Insufficient permissions to list all users", "FORBIDDEN");
     }
@@ -124,8 +131,8 @@ const toggleUserStatus = catchAsync(async (req, res) => {
         if (!requester.hospital || !user.hospital || requester.hospital.toString() !== user.hospital.toString()) {
             throw new ApiError(403, "Cannot modify users from another hospital");
         }
-        if (user.role !== ROLES.DOCTOR) {
-             throw new ApiError(403, "Hospital admins can only modify doctors");
+        if (!HOSPITAL_APPROVABLE_ROLES.includes(user.role)) {
+             throw new ApiError(403, "Hospital admins can only modify operational users");
         }
     }
 

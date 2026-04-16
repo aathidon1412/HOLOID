@@ -11,6 +11,9 @@ import { ApiClientError } from "@/lib/api";
 const ROLE_ROUTES: Record<UserRole, string> = {
   HOSPITAL_ADMIN: "/admin/inventory",
   DOCTOR: "/doctor/overview",
+  BED_MANAGER: "/bed-manager/entry",
+  DATA_ENTRY: "/data-entry/entry",
+  AMBULANCE_DRIVER: "/ambulance/dispatch",
   GOVERNMENT_OFFICIAL: "/gov/command-center",
 };
 
@@ -29,8 +32,6 @@ const LoginPage = () => {
   const [error, setError] = useState<string>("");
   const [postRegisterMessage, setPostRegisterMessage] = useState<string>("");
   const [hospitals, setHospitals] = useState<Array<{ id: string; name: string }>>([]);
-
-  const roleRoute = useMemo(() => ROLE_ROUTES[role], [role]);
 
   const handleSignIn = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -54,7 +55,7 @@ const LoginPage = () => {
     setPostRegisterMessage("");
     try {
       // Validate hospital selection for roles that require it
-      if ((role === "HOSPITAL_ADMIN" || role === "DOCTOR") && !hospitalId.trim()) {
+      if (role !== "GOVERNMENT_OFFICIAL" && !hospitalId.trim()) {
         setError("Please select a hospital");
         setIsWorking(false);
         return;
@@ -88,7 +89,7 @@ const LoginPage = () => {
 
   // Fetch hospitals for dropdown when role requires them
   useMemo(() => {
-    const needsHospital = role === "HOSPITAL_ADMIN" || role === "DOCTOR";
+    const needsHospital = role !== "GOVERNMENT_OFFICIAL";
     if (!needsHospital) {
       setHospitals([]);
       return;
@@ -221,6 +222,9 @@ const LoginPage = () => {
                 <select id="role" value={role} onChange={(e) => setRole(e.target.value as UserRole)} className="w-full rounded-md border border-border bg-secondary px-3 py-2 text-sm text-foreground">
                   <option value="HOSPITAL_ADMIN">Hospital Admin</option>
                   <option value="DOCTOR">Doctor</option>
+                  <option value="BED_MANAGER">Bed Manager</option>
+                  <option value="DATA_ENTRY">Data Entry</option>
+                  <option value="AMBULANCE_DRIVER">Ambulance Driver</option>
                   <option value="GOVERNMENT_OFFICIAL">Government Official</option>
                 </select>
               </div>
@@ -234,7 +238,7 @@ const LoginPage = () => {
                       onChange={(e) => setHospitalId(e.target.value)}
                       className="w-full rounded-md border border-border bg-secondary px-3 py-2 text-sm text-foreground"
                     >
-                      <option value="">Select hospital (required for Hospital Admin / Doctor)</option>
+                      <option value="">Select hospital (required for this role)</option>
                       {hospitals.map((h) => (
                         <option key={h.id} value={h.id}>
                           {h.name}

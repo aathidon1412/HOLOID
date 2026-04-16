@@ -8,6 +8,22 @@ const tokenService = require("../services/tokenService");
 const { sendActivationEmail } = require("../services/emailService");
 const ROLES = require("../utils/roles");
 
+const APPROVAL_REQUIRED_ROLES = [
+	ROLES.HOSPITAL_ADMIN,
+	ROLES.DOCTOR,
+	ROLES.BED_MANAGER,
+	ROLES.DATA_ENTRY,
+	ROLES.AMBULANCE_DRIVER,
+];
+
+const HOSPITAL_SCOPED_ROLES = [
+	ROLES.HOSPITAL_ADMIN,
+	ROLES.DOCTOR,
+	ROLES.BED_MANAGER,
+	ROLES.DATA_ENTRY,
+	ROLES.AMBULANCE_DRIVER,
+];
+
 const register = catchAsync(async (req, res) => {
 	const { name, email, password, role, hospitalId } = req.body;
 	const normalizedEmail = email.toLowerCase();
@@ -17,8 +33,16 @@ const register = catchAsync(async (req, res) => {
 		throw new ApiError(409, "Email already registered", "EMAIL_EXISTS");
 	}
 
+	if (!Object.values(ROLES).includes(role)) {
+		throw new ApiError(400, "Invalid role", "INVALID_ROLE");
+	}
+
+	if (HOSPITAL_SCOPED_ROLES.includes(role) && !hospitalId) {
+		throw new ApiError(400, "hospitalId is required for this role", "MISSING_HOSPITAL");
+	}
+
 	// Users that require approval (do not get activation email immediately)
-	const requiresApproval = [ROLES.HOSPITAL_ADMIN, ROLES.DOCTOR].includes(role);
+	const requiresApproval = APPROVAL_REQUIRED_ROLES.includes(role);
 
 	const user = await User.create({
 		name,

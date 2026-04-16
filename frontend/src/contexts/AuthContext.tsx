@@ -1,7 +1,13 @@
 import React, { createContext, useContext, useEffect, useMemo, useState, ReactNode } from "react";
 import { apiRequest, ApiClientError, setToken } from "@/lib/api";
 
-export type UserRole = "HOSPITAL_ADMIN" | "DOCTOR" | "GOVERNMENT_OFFICIAL";
+export type UserRole =
+  | "HOSPITAL_ADMIN"
+  | "DOCTOR"
+  | "BED_MANAGER"
+  | "DATA_ENTRY"
+  | "AMBULANCE_DRIVER"
+  | "GOVERNMENT_OFFICIAL";
 
 export interface User {
   id: string;
@@ -15,7 +21,7 @@ interface AuthContextType {
   user: User | null;
   accessToken: string | null;
   login: (email: string, password: string) => Promise<User>;
-  register: (data: { name: string; email: string; password: string; role: UserRole; hospitalId?: string | null }) => Promise<void>;
+  register: (data: { name: string; email: string; password: string; role: UserRole; hospitalId?: string | null }) => Promise<RegisterResponse>;
   activate: (token: string) => Promise<void>;
   logout: () => Promise<void>;
   refreshSession: () => Promise<void>;

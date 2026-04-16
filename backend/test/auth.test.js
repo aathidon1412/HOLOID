@@ -9,7 +9,7 @@ describe('Auth integration tests', () => {
     name: 'Aathi Tester',
     email: 'aathi@test.local',
     password: 'password123',
-    role: 'HOSPITAL_ADMIN',
+    role: 'GOVERNMENT_OFFICIAL',
   };
 
   it('registers a user without exposing activation link', async () => {
@@ -24,7 +24,7 @@ describe('Auth integration tests', () => {
   it('activates account using activation token and allows login', async () => {
     const regResp = await request(app)
       .post('/api/v1/auth/register')
-      .send({ name: 'User2', email: 'user2@test.local', password: 'password123', role: 'HOSPITAL_ADMIN' })
+      .send({ name: 'User2', email: 'user2@test.local', password: 'password123', role: 'GOVERNMENT_OFFICIAL' })
       .expect(201);
 
     const createdUser = await User.findOne({ email: 'user2@test.local' });
