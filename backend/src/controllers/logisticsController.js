@@ -1583,6 +1583,7 @@ const updateTransferStatus = async (req, res) => {
   let destinationOccupiedSlot = null;
   let destinationReleasedSlot = null;
   let sourceReleasedSlot = null;
+  let sourceReleasedDuringTransit = false;
   let hospitalRegion = "";
 
   try {
@@ -1673,60 +1674,140 @@ const updateTransferStatus = async (req, res) => {
           dispatchDriver.hospital &&
           String(dispatchDriver.hospital) === String(transferDoc.toHospital._id);
 
+        // Fallback: if no ambulance-linked driver pair is available, route dispatch to any
+        // active destination-hospital ambulance driver so at least one driver receives alert.
         if (!hasEligibleDriver) {
-          throw new Error("No eligible destination hospital driver available for dispatch");
-        }
-
-        if (
-          transferDoc.assignedAmbulance &&
-          String(transferDoc.assignedAmbulance) !== String(dispatchAmbulance._id)
-        ) {
-          const previousAmbulance = await withSession(
-            Ambulance.findById(transferDoc.assignedAmbulance),
+          const fallbackDriver = await withSession(
+            User.findOne({
+              role: ROLES.AMBULANCE_DRIVER,
+              hospital: transferDoc.toHospital._id,
+              isActive: true
+            }).sort({ updatedAt: 1 }),
             session
           );
 
-          if (previousAmbulance && previousAmbulance.active) {
-            previousAmbulance.status = "available";
-            await saveWithSession(previousAmbulance, session);
+          if (fallbackDriver) {
+            dispatchDriver = fallbackDriver;
+            dispatchAmbulance = dispatchAmbulance && dispatchAmbulance.active ? dispatchAmbulance : null;
           }
         }
 
-        transferDoc.assignedAmbulance = dispatchAmbulance._id;
-        transferDoc.assignedDriver = dispatchDriver._id;
-        transferDoc.driverWorkflowStatus = transferDoc.driverWorkflowStatus || "idle";
+        const hasAnyEligibleDriver =
+          dispatchDriver &&
+          dispatchDriver.isActive &&
+          dispatchDriver.role === ROLES.AMBULANCE_DRIVER &&
+          dispatchDriver.hospital &&
+          String(dispatchDriver.hospital) === String(transferDoc.toHospital._id);
 
-        if (transferDoc.dispatchStatus !== "accepted") {
-          transferDoc.dispatchStatus = "pending_driver";
+        const nextAssignedAmbulanceId = dispatchAmbulance?._id ? String(dispatchAmbulance._id) : "";
+
+        if (!hasAnyEligibleDriver) {
+          if (transferDoc.assignedAmbulance) {
+            const previousAmbulance = await withSession(
+              Ambulance.findById(transferDoc.assignedAmbulance),
+              session
+            );
+
+            if (previousAmbulance && previousAmbulance.active && previousAmbulance.status !== "in_service") {
+              previousAmbulance.status = "available";
+              await saveWithSession(previousAmbulance, session);
+            }
+          }
+
+          transferDoc.assignedAmbulance = null;
+          transferDoc.assignedDriver = null;
+          transferDoc.dispatchStatus = "unassigned";
+          transferDoc.driverWorkflowStatus = "idle";
+          transferDoc.dispatchMeta.assignedAt = null;
           transferDoc.dispatchMeta.respondedAt = null;
           transferDoc.dispatchMeta.acceptedAt = null;
           transferDoc.dispatchMeta.rejectedAt = null;
           transferDoc.dispatchMeta.rejectionReason = "";
+          transferDoc.dispatchMeta.lastStatusAt = new Date();
           transferDoc.driverTimeline.push({
             status: "idle",
-            note: note || "Destination hospital accepted transfer and assigned driver"
+            note: note || "Destination hospital accepted transfer; awaiting manual driver assignment"
           });
+
+          await syncHospitalAmbulanceAvailability({ hospitalId: transferDoc.toHospital._id, session });
+        } else {
+          if (
+            transferDoc.assignedAmbulance &&
+            (!nextAssignedAmbulanceId || String(transferDoc.assignedAmbulance) !== nextAssignedAmbulanceId)
+          ) {
+            const previousAmbulance = await withSession(
+              Ambulance.findById(transferDoc.assignedAmbulance),
+              session
+            );
+
+            if (previousAmbulance && previousAmbulance.active) {
+              previousAmbulance.status = "available";
+              await saveWithSession(previousAmbulance, session);
+            }
+          }
+
+          transferDoc.assignedAmbulance = dispatchAmbulance?._id || null;
+          transferDoc.assignedDriver = dispatchDriver._id;
+          transferDoc.driverWorkflowStatus = transferDoc.driverWorkflowStatus || "idle";
+
+          if (transferDoc.dispatchStatus !== "accepted") {
+            transferDoc.dispatchStatus = "pending_driver";
+            transferDoc.dispatchMeta.respondedAt = null;
+            transferDoc.dispatchMeta.acceptedAt = null;
+            transferDoc.dispatchMeta.rejectedAt = null;
+            transferDoc.dispatchMeta.rejectionReason = "";
+            transferDoc.driverTimeline.push({
+              status: "idle",
+              note:
+                note ||
+                (dispatchAmbulance
+                  ? "Destination hospital accepted transfer and assigned driver"
+                  : "Destination hospital accepted transfer and assigned driver (ambulance pending)")
+            });
+          }
+
+          if (!transferDoc.dispatchMeta.assignedAt) {
+            transferDoc.dispatchMeta.assignedAt = new Date();
+          }
+
+          transferDoc.dispatchMeta.lastStatusAt = new Date();
+
+          if (dispatchAmbulance) {
+            dispatchAmbulance.currentDriver = dispatchDriver._id;
+            if (dispatchAmbulance.status !== "in_service") {
+              dispatchAmbulance.status = "assigned";
+            }
+
+            await saveWithSession(dispatchAmbulance, session);
+          }
+
+          await syncHospitalAmbulanceAvailability({ hospitalId: transferDoc.toHospital._id, session });
         }
-
-        if (!transferDoc.dispatchMeta.assignedAt) {
-          transferDoc.dispatchMeta.assignedAt = new Date();
-        }
-
-        transferDoc.dispatchMeta.lastStatusAt = new Date();
-
-        dispatchAmbulance.currentDriver = dispatchDriver._id;
-        if (dispatchAmbulance.status !== "in_service") {
-          dispatchAmbulance.status = "assigned";
-        }
-
-        await saveWithSession(dispatchAmbulance, session);
-        await syncHospitalAmbulanceAvailability({ hospitalId: transferDoc.toHospital._id, session });
       }
 
       if (finalStatus === "dispatched" || finalStatus === "in_transit") {
         if (transferDoc.patient) {
           transferDoc.patient.status = "in_transit";
           await saveWithSession(transferDoc.patient, session);
+        }
+
+        if (finalStatus === "in_transit" && !transferDoc.sourceBedReleasedAt) {
+          const sourceSlot = await releaseOneOccupiedSourceBedSlot({
+            hospitalId: transferDoc.fromHospital._id,
+            normalizedBedType: bedType,
+            session
+          });
+
+          if (sourceSlot) {
+            sourceReleasedSlot = sourceSlot;
+            sourceReleasedDuringTransit = true;
+            transferDoc.sourceBedReleasedAt = new Date();
+            inventorySyncHospitalIds.add(String(transferDoc.fromHospital._id));
+
+            transferDoc.fromHospital.resources[bedType] =
+              Number(transferDoc.fromHospital.resources?.[bedType] || 0) + 1;
+            await saveWithSession(transferDoc.fromHospital, session);
+          }
         }
       }
 
@@ -1761,19 +1842,22 @@ const updateTransferStatus = async (req, res) => {
           releasedAt: null
         };
 
-        transferDoc.fromHospital.resources[bedType] =
-          Number(transferDoc.fromHospital.resources?.[bedType] || 0) + 1;
+        if (!transferDoc.sourceBedReleasedAt) {
+          const sourceSlot = await releaseOneOccupiedSourceBedSlot({
+            hospitalId: transferDoc.fromHospital._id,
+            normalizedBedType: bedType,
+            session
+          });
+          sourceReleasedSlot = sourceSlot;
+          if (sourceSlot) {
+            inventorySyncHospitalIds.add(String(transferDoc.fromHospital._id));
+            transferDoc.sourceBedReleasedAt = new Date();
 
-        await saveWithSession(transferDoc.fromHospital, session);
+            transferDoc.fromHospital.resources[bedType] =
+              Number(transferDoc.fromHospital.resources?.[bedType] || 0) + 1;
 
-        const sourceSlot = await releaseOneOccupiedSourceBedSlot({
-          hospitalId: transferDoc.fromHospital._id,
-          normalizedBedType: bedType,
-          session
-        });
-        sourceReleasedSlot = sourceSlot;
-        if (sourceSlot) {
-          inventorySyncHospitalIds.add(String(transferDoc.fromHospital._id));
+            await saveWithSession(transferDoc.fromHospital, session);
+          }
         }
 
         if (transferDoc.patient) {
@@ -1927,6 +2011,32 @@ const updateTransferStatus = async (req, res) => {
         note: "Source bed released after transfer completion"
       });
     }
+  }
+
+  if (sourceReleasedDuringTransit && sourceReleasedSlot) {
+    await createAuditLog({
+      entityType: "hospital",
+      entityId: transfer.fromHospital._id,
+      action: "bed_released_for_in_transit",
+      actor: getRequester(actor),
+      metadata: {
+        bedType: transfer.requiredBedType,
+        reservationStatus: "released_source_in_transit"
+      }
+    });
+
+    emitBedSlotLifecycleEvent(req, {
+      eventName: BED_SLOT_SOCKET_EVENTS.RELEASED,
+      hospitalId: transfer.fromHospital?._id,
+      region: transfer.fromHospital?.region,
+      slot: sourceReleasedSlot,
+      previousStatus: "Occupied",
+      transferId: transfer._id,
+      patientId: transfer.patient?._id,
+      requiredBedType: transfer.requiredBedType,
+      reservationStatus: "released_source_in_transit",
+      note: note || "Source bed released as transfer moved in transit"
+    });
   }
 
   if (slotReleased) {
@@ -2702,11 +2812,13 @@ const updateDriverDispatchProgress = async (req, res) => {
 
   let updatedTransfer = null;
   let hospitalRegion = "";
+  let sourceReleasedSlot = null;
 
   try {
     const result = await runWithOptionalTransaction(async (session) => {
       const transfer = await withSession(
         Transfer.findById(transferId)
+          .populate("fromHospital")
           .populate("toHospital")
           .populate("patient")
           .populate("assignedAmbulance"),
@@ -2741,6 +2853,26 @@ const updateDriverDispatchProgress = async (req, res) => {
         if (transfer.patient) {
           transfer.patient.status = "in_transit";
           await saveWithSession(transfer.patient, session);
+        }
+
+        if (!transfer.sourceBedReleasedAt) {
+          const releasedSourceSlot = await releaseOneOccupiedSourceBedSlot({
+            hospitalId: transfer.fromHospital?._id || transfer.fromHospital,
+            normalizedBedType: transfer.requiredBedType,
+            session
+          });
+
+          if (releasedSourceSlot) {
+            sourceReleasedSlot = releasedSourceSlot;
+            transfer.sourceBedReleasedAt = new Date();
+
+            if (transfer.fromHospital) {
+              transfer.fromHospital.resources[transfer.requiredBedType] =
+                Number(transfer.fromHospital.resources?.[transfer.requiredBedType] || 0) + 1;
+              await saveWithSession(transfer.fromHospital, session);
+              await syncResourceInventoryFromBedSlots({ hospitalId: transfer.fromHospital._id, session });
+            }
+          }
         }
       }
 
@@ -2796,6 +2928,7 @@ const updateDriverDispatchProgress = async (req, res) => {
     .populate("toHospital", "name region")
     .populate("assignedAmbulance", "vehicleNumber label status")
     .populate("assignedDriver", "name email role")
+    .populate("patient", "patientId name age sex status")
     .populate("reservedBedSlot", "wardName bedType slotLabel status")
     .lean();
 
@@ -2811,6 +2944,21 @@ const updateDriverDispatchProgress = async (req, res) => {
       note: note || ""
     }
   });
+
+  if (sourceReleasedSlot) {
+    emitBedSlotLifecycleEvent(req, {
+      eventName: BED_SLOT_SOCKET_EVENTS.RELEASED,
+      hospitalId: transfer?.fromHospital?._id,
+      region: transfer?.fromHospital?.region,
+      slot: sourceReleasedSlot,
+      previousStatus: "Occupied",
+      transferId: transfer?._id,
+      patientId: transfer?.patient?._id,
+      requiredBedType: transfer?.requiredBedType,
+      reservationStatus: "released_source_in_transit",
+      note: note || "Source bed released as transfer moved in transit"
+    });
+  }
 
   const transferStatusPayload = {
     transfer: {

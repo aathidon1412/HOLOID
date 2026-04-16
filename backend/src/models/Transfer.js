@@ -140,6 +140,10 @@ const transferSchema = new mongoose.Schema(
       enum: ["none", "reserved", "occupied", "released"],
       default: "none"
     },
+    sourceBedReleasedAt: {
+      type: Date,
+      default: null
+    },
     destinationBedSnapshot: { type: destinationBedSnapshotSchema, default: () => ({}) },
     route: { type: routeSchema, default: () => ({}) },
     timeline: { type: [timelineSchema], default: [] }
