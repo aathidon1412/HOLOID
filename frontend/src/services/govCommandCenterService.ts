@@ -32,47 +32,11 @@ export type CriticalHospital = {
   criticalTypes: string[];
 };
 
-export type LiveFleetItem = {
-  transferId: string;
-  patientName: string;
-  requiredBedType: string;
-  transferStatus: string;
-  dispatchStatus: string;
-  driverWorkflowStatus: string;
-  fromHospital: {
-    id: string;
-    name: string;
-    region: string;
-    coordinates: { lat: number; lng: number } | null;
-  };
-  toHospital: {
-    id: string;
-    name: string;
-    region: string;
-    coordinates: { lat: number; lng: number } | null;
-  };
-  ambulance: {
-    id: string;
-    vehicleNumber: string;
-    label: string;
-    status: string;
-  };
-  driver: {
-    id: string;
-    name: string;
-  };
-  marker: {
-    lat: number;
-    lng: number;
-    source: string;
-    updatedAt: string | null;
-  } | null;
-  cadenceSec: number | null;
-  isMoving: boolean;
-  speedKmph: number | null;
-  etaToDestinationMin: number | null;
-  distanceToDestinationKm: number | null;
-  updatedAt: string;
+export type TransferMetrics = {
+  activeTransfers: number;
+  inTransit: number;
+  awaitingDriver: number;
+  accepted: number;
 };
 
 export const govCommandCenterService = {
@@ -88,16 +52,13 @@ export const govCommandCenterService = {
     return (res.data?.hospitals || []) as CriticalHospital[];
   },
 
-  async getLiveFleet() {
-    const res = await axiosInstance.get("/command-center/fleet/live");
+  async getTransferMetrics() {
+    const res = await axiosInstance.get("/command-center/transfers/metrics");
     return {
-      fleet: (res.data?.fleet || []) as LiveFleetItem[],
-      metrics: {
-        activeTransfers: Number(res.data?.metrics?.activeTransfers || 0),
-        inTransit: Number(res.data?.metrics?.inTransit || 0),
-        awaitingDriver: Number(res.data?.metrics?.awaitingDriver || 0),
-        accepted: Number(res.data?.metrics?.accepted || 0),
-      },
-    };
+      activeTransfers: Number(res.data?.metrics?.activeTransfers || 0),
+      inTransit: Number(res.data?.metrics?.inTransit || 0),
+      awaitingDriver: Number(res.data?.metrics?.awaitingDriver || 0),
+      accepted: Number(res.data?.metrics?.accepted || 0),
+    } as TransferMetrics;
   },
 };

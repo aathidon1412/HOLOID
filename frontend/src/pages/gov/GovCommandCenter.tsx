@@ -21,7 +21,7 @@ const GovCommandCenter = () => {
   const refreshLiveData = useCallback(() => {
     queryClient.invalidateQueries({ queryKey: ["gov-command-center-occupancy"] });
     queryClient.invalidateQueries({ queryKey: ["gov-command-center-critical"] });
-    queryClient.invalidateQueries({ queryKey: ["gov-command-center-fleet"] });
+    queryClient.invalidateQueries({ queryKey: ["gov-command-center-transfer-metrics"] });
   }, [queryClient]);
 
   useSocket({ eventName: "dispatch-assigned", onEvent: refreshLiveData });
@@ -42,9 +42,9 @@ const GovCommandCenter = () => {
     refetchInterval: 30000,
   });
 
-  const { data: fleetData } = useQuery({
-    queryKey: ["gov-command-center-fleet"],
-    queryFn: govCommandCenterService.getLiveFleet,
+  const { data: transferMetrics } = useQuery({
+    queryKey: ["gov-command-center-transfer-metrics"],
+    queryFn: govCommandCenterService.getTransferMetrics,
     refetchInterval: 15000,
   });
 
@@ -124,8 +124,8 @@ const GovCommandCenter = () => {
           />
           <MetricCard
             title="Transfers In Progress"
-            value={String(fleetData?.metrics.activeTransfers || 0)}
-            subtitle={`${fleetData?.metrics.inTransit || 0} in transit • ${fleetData?.metrics.awaitingDriver || 0} awaiting driver`}
+            value={String(transferMetrics?.activeTransfers || 0)}
+            subtitle={`${transferMetrics?.inTransit || 0} in transit • ${transferMetrics?.awaitingDriver || 0} awaiting driver`}
             icon={<ArrowLeftRight size={20} />}
             status="info"
           />

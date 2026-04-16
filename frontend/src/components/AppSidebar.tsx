@@ -3,7 +3,7 @@ import { useAuth, UserRole } from "@/contexts/AuthContext";
 import { cn } from "@/lib/utils";
 import {
   LayoutDashboard, ArrowLeftRight, Bell, BarChart3, Settings, LogOut,
-  Stethoscope, ClipboardList, History, MapPin, FileText, Building2, Users, ClipboardCheck, Truck
+  Stethoscope, ClipboardList, History, FileText, Building2, Users, ClipboardCheck, Truck
 } from "lucide-react";
 import holoidLogo from "@/assets/holoid_logo.png";
 
@@ -32,7 +32,6 @@ const doctorLinks: SidebarLink[] = [
 
 const govLinks: SidebarLink[] = [
   { to: "/gov/command-center", icon: <LayoutDashboard size={18} />, label: "Command Center" },
-  { to: "/gov/map", icon: <MapPin size={18} />, label: "Regional Bed Map" },
   { to: "/gov/transfers", icon: <ArrowLeftRight size={18} />, label: "Transfer History" },
   { to: "/gov/analytics", icon: <BarChart3 size={18} />, label: "Predictive Analytics" },
   { to: "/gov/audit-logs", icon: <FileText size={18} />, label: "Audit Logs" },

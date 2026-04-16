@@ -23,7 +23,6 @@ import DoctorSettings from "@/pages/doctor/DoctorSettings";
 import BedManagerEntry from "@/pages/bed/BedManagerEntry";
 import AmbulanceDispatch from "@/pages/ambulance/AmbulanceDispatch";
 import GovCommandCenter from "@/pages/gov/GovCommandCenter";
-import GovMap from "@/pages/gov/GovMap";
 import GovTransfers from "@/pages/gov/GovTransfers";
 import GovAnalytics from "@/pages/gov/GovAnalytics";
 import GovAuditLogs from "@/pages/gov/GovAuditLogs";
@@ -70,7 +69,6 @@ const App = () => (
                 {/* Government Official Routes */}
                 <Route element={<DashboardLayout />}>
                   <Route path="/gov/command-center" element={<GovCommandCenter />} />
-                  <Route path="/gov/map" element={<GovMap />} />
                   <Route path="/gov/transfers" element={<GovTransfers />} />
                   <Route path="/gov/analytics" element={<GovAnalytics />} />
                   <Route path="/gov/audit-logs" element={<GovAuditLogs />} />
