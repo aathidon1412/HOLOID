@@ -3,6 +3,12 @@ const ApiError = require("../utils/ApiError");
 const ApiResponse = require("../utils/ApiResponse");
 const catchAsync = require("../utils/catchAsync");
 
+const parseCoordinate = (value) => {
+    if (value === undefined || value === null || value === "") return null;
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : NaN;
+};
+
 const createHospital = catchAsync(async (req, res) => {
     // Debug logging to diagnose non-JSON responses seen by the frontend
     try {
@@ -63,6 +69,19 @@ const getHospital = catchAsync(async (req, res) => {
     return res.status(200).json(new ApiResponse(200, { hospital }, "OK"));
 });
 
+const getMyHospital = catchAsync(async (req, res) => {
+    if (!req.user?.hospital) {
+        throw new ApiError(400, "No hospital linked to this user", "HOSPITAL_NOT_ASSIGNED");
+    }
+
+    const hospital = await Hospital.findById(req.user.hospital).lean();
+    if (!hospital) {
+        throw new ApiError(404, "Hospital not found", "NOT_FOUND");
+    }
+
+    return res.status(200).json(new ApiResponse(200, { hospital }, "OK"));
+});
+
 const ROLES = require("../utils/roles");
 
 const updateHospital = catchAsync(async (req, res) => {
@@ -102,6 +121,84 @@ const updateHospital = catchAsync(async (req, res) => {
     res.status(200).json(new ApiResponse(200, 'Hospital updated', hospital));
 });
 
+const updateMyHospital = catchAsync(async (req, res) => {
+    const hospitalId = req.user?.hospital;
+    if (!hospitalId) {
+        throw new ApiError(400, "No hospital linked to this user", "HOSPITAL_NOT_ASSIGNED");
+    }
+
+    const hospital = await Hospital.findById(hospitalId);
+    if (!hospital) {
+        throw new ApiError(404, "Hospital not found", "NOT_FOUND");
+    }
+
+    const { name, region, contactPhone, emergencyPhone, latitude, longitude } = req.body || {};
+
+    if (
+        name === undefined &&
+        region === undefined &&
+        contactPhone === undefined &&
+        emergencyPhone === undefined &&
+        latitude === undefined &&
+        longitude === undefined
+    ) {
+        throw new ApiError(400, "No update fields provided", "VALIDATION_ERROR");
+    }
+
+    if (name !== undefined) {
+        const trimmedName = String(name).trim();
+        if (!trimmedName || trimmedName.length < 2 || trimmedName.length > 120) {
+            throw new ApiError(400, "Hospital name must be between 2 and 120 characters", "VALIDATION_ERROR");
+        }
+        hospital.name = trimmedName;
+    }
+
+    if (region !== undefined) {
+        hospital.region = String(region).trim();
+    }
+
+    if (contactPhone !== undefined) {
+        const phone = String(contactPhone).trim();
+        if (!phone) {
+            throw new ApiError(400, "Contact phone cannot be empty", "VALIDATION_ERROR");
+        }
+        hospital.contact.phone = phone;
+    }
+
+    if (emergencyPhone !== undefined) {
+        hospital.contact.emergencyPhone = String(emergencyPhone).trim();
+    }
+
+    const lat = parseCoordinate(latitude);
+    const lng = parseCoordinate(longitude);
+
+    if ((latitude !== undefined || longitude !== undefined) && (Number.isNaN(lat) || Number.isNaN(lng))) {
+        throw new ApiError(400, "Latitude and longitude must be valid numbers", "VALIDATION_ERROR");
+    }
+
+    if (lat !== null || lng !== null) {
+        if (lat === null || lng === null) {
+            throw new ApiError(400, "Both latitude and longitude are required", "VALIDATION_ERROR");
+        }
+
+        if (lat < -90 || lat > 90) {
+            throw new ApiError(400, "Latitude must be between -90 and 90", "VALIDATION_ERROR");
+        }
+        if (lng < -180 || lng > 180) {
+            throw new ApiError(400, "Longitude must be between -180 and 180", "VALIDATION_ERROR");
+        }
+
+        hospital.location.coordinates = {
+            type: "Point",
+            coordinates: [lng, lat],
+        };
+    }
+
+    await hospital.save();
+
+    return res.status(200).json(new ApiResponse(200, { hospital }, "Hospital details updated successfully"));
+});
+
 
 const deleteHospital = catchAsync(async (req, res) => {
     const id = req.params.id;
@@ -120,6 +217,8 @@ module.exports = {
     listHospitals,
     listHospitalsWithBedStatus,
     getHospital,
+    getMyHospital,
     updateHospital,
+    updateMyHospital,
     deleteHospital,
 };

@@ -5,6 +5,7 @@ export type UserRole =
   | "HOSPITAL_ADMIN"
   | "DOCTOR"
   | "BED_MANAGER"
+  | "DATA_ENTRY"
   | "AMBULANCE_DRIVER"
   | "GOVERNMENT_OFFICIAL";
 
@@ -22,6 +23,8 @@ interface AuthContextType {
   login: (email: string, password: string) => Promise<User>;
   register: (data: { name: string; email: string; password: string; role: UserRole; hospitalId?: string | null }) => Promise<RegisterResponse>;
   activate: (token: string) => Promise<void>;
+  updateProfile: (data: { name?: string; email?: string }) => Promise<User>;
+  changePassword: (data: { currentPassword: string; newPassword: string; confirmPassword: string }) => Promise<void>;
   logout: () => Promise<void>;
   refreshSession: () => Promise<void>;
   isAuthenticated: boolean;
@@ -32,6 +35,7 @@ const AuthContext = createContext<AuthContextType | null>(null);
 
 type LoginResponse = { accessToken: string; user: User };
 type VerifyResponse = { user: User };
+type ProfileResponse = { user: User };
 type RegisterResponse = {
   user: { id: string; name: string; email: string; role: UserRole; isActive: boolean; isApproved?: boolean };
   activationEmailSent?: boolean;
@@ -105,6 +109,29 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     await apiRequest<null>(`/auth/activate?token=${encodeURIComponent(token)}`);
   };
 
+  const updateProfile = async (data: { name?: string; email?: string }) => {
+    const res = await apiRequest<ProfileResponse>("/users/me", {
+      method: "PATCH",
+      auth: true,
+      body: data,
+    });
+
+    setUser(res.data.user);
+    return res.data.user;
+  };
+
+  const changePassword = async (data: {
+    currentPassword: string;
+    newPassword: string;
+    confirmPassword: string;
+  }) => {
+    await apiRequest<null>("/users/me/password", {
+      method: "PATCH",
+      auth: true,
+      body: data,
+    });
+  };
+
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -134,6 +161,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       login,
       register,
       activate,
+      updateProfile,
+      changePassword,
       logout,
       refreshSession,
       isAuthenticated: !!user && !!accessToken,

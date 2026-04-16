@@ -5,7 +5,9 @@ const {
 	createHospital,
 	listHospitals,
 	listHospitalsWithBedStatus,
+	getMyHospital,
 	getHospital,
+	updateMyHospital,
 	updateHospital,
 	deleteHospital,
 } = require("../controllers/hospitalController");
@@ -32,6 +34,10 @@ router.get(
 	),
 	listHospitalsWithBedStatus
 );
+
+// Hospital admin self profile endpoints
+router.get("/me", authenticate, authorizeRoles(ROLES.HOSPITAL_ADMIN), getMyHospital);
+router.patch("/me", authenticate, authorizeRoles(ROLES.HOSPITAL_ADMIN), updateMyHospital);
 
 // Get single hospital
 router.get("/:id", authenticate, authorizeRoles(ROLES.GOVERNMENT_OFFICIAL), getHospital);
